@@ -1,14 +1,10 @@
 import datetime
 
-from sklearn.preprocessing import StandardScaler
-from sklearn.decomposition import PCA
 from imblearn.pipeline import Pipeline
 from sklearn.model_selection import GridSearchCV
 import pandas as pd
 import xgboost as xgb
 import category_encoders as ce
-
-import src.src_models.custom_transformation as custom_transform
 
 
 def crear_grid_search_cv(param_test: dict, hyperparams: dict, gs_cv: dict):
