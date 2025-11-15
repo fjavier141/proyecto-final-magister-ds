@@ -25,13 +25,13 @@ def get_dates(test_date: int):
     return per_train, per_test
 
 
-def create_directory_if_not_exists(paths, logger):
+def create_directory_if_not_exists(paths):
     for path in paths:
         if not os.path.exists(path):
             os.makedirs(path)
-            logger.info(f'Se crea directorio {path}')
+            print(f'Se crea directorio {path}')
         else:
-            logger.info(f'Ruta {path} ya existe')
+            print(f'Ruta {path} ya existe')
 
 
 def concat_dfs_hor(list_dfs):
