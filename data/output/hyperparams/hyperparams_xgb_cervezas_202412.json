@@ -1,0 +1,1 @@
+{"learning_rate": 0.01, "n_estimators": 1500, "max_depth": 3, "min_child_weight": 1, "gamma": 0, "subsample": 1, "colsample_bytree": 0.7, "reg_alpha": 0.01, "reg_lambda": 10, "objective": "reg:squarederror", "nthread": 3}

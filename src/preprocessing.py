@@ -269,11 +269,10 @@ def drop_nan_values(df: pd.DataFrame, cols_to_drop: list):
 # ---------------------------------------------------------------------
 
 
-def get_train_data(df1: pd.DataFrame, train_date_set: list, category):
+def get_train_data(df: pd.DataFrame, train_date_set: list, category):
     """
     Devuelve X de train: filtra por fechas, descarta NaN en y, y remueve columnas no entrenables.
     """
-    df = df1.copy()
     cols_to_drop = [
         'id_categoria', 'id_periodo', 'id_cliente', 'id_canal',
         'volumen', 'volumen_sem', 'superficie_km2', 'n_habitantes', 'prop_vol_masivo', 'canal', 'descr_flag_patente',
