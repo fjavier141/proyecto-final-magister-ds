@@ -20,7 +20,7 @@ def crear_grid_search_cv(param_test: dict, hyperparams: dict, gs_cv: dict):
     :param gs_cv: posee los parámetros que se utilizarán en el grid search cross validation.
     :return:
     """
-    ce_te = ce.TargetEncoder(cols=['ID_BARRIO'])
+    ce_te = ce.TargetEncoder(cols=['id_barrio', 'id_comuna'])
     reg = xgb.XGBRegressor(
         learning_rate=hyperparams['learning_rate'],
         n_estimators=hyperparams['n_estimators'],
@@ -58,7 +58,7 @@ def crear_grid_search_cv_generic(estimator, param_test: dict, gs_cv: dict, model
     :param gs_cv: diccionario con 'scoring', 'n_jobs' y 'cv'
     :param model_name: nombre del step en el Pipeline (ej: 'lgbm', 'rf', 'ridge')
     """
-    ce_te = ce.TargetEncoder(cols=['ID_BARRIO'])
+    ce_te = ce.TargetEncoder(cols=['id_barrio', 'id_comuna'])
 
     # Para Ridge incluimos un StandardScaler; para el resto puedes dejarlo igual.
     steps = [('cat_scaler', ce_te)]

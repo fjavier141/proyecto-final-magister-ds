@@ -1,8 +1,18 @@
+import datetime
+from datetime import datetime as dt
+from dateutil.relativedelta import *
 
 import pandas as pd
 
 
-def get_val_set_index(train_date_set, train_x):
+dict_mix = {
+    "cervezas": ["masivo"],
+    "analcoholicos": ["gaseosas", "minerales"]
+}
+
+
+
+def get_val_set_index(train_date_set, preprocessed_data, category):
     """
     Devuelve el conjunto de entrenamiento y de validación para un periodo seleccionado
 
@@ -13,7 +23,10 @@ def get_val_set_index(train_date_set, train_x):
     val_split_period = max(train_date_set) - 200
     val_split_date = (pd.to_datetime(str(val_split_period), format='%Y%m') - pd.DateOffset(1)).date()
 
-    df = train_x.copy()
+    df = (
+        preprocessed_data
+        .pipe(get_train_val_data, train_date_set, category)
+    )
 
     tscv = TimeBasedCV(
         train_period=1465,  # Number of days that training set considers
@@ -24,11 +37,37 @@ def get_val_set_index(train_date_set, train_x):
     index_output = tscv.split(
         df,
         validation_split_date=val_split_date,   # Date that separate validation and test set
-        date_column='PERIODO_DATE'
+        date_column='periodo_date'
     )
 
     return index_output
 
+
+def get_train_val_data(df: pd.DataFrame, train_date_set, category):
+    """
+    Devuelve el conjunto de entrenamiento
+
+    :param df: data de entrada
+    :param train_date_set: fechas en la cual se va a entrenar
+    :return:
+    """
+    cols_to_drop = [
+        'id_categoria', 'id_periodo', 'id_cliente', 'id_canal',
+        'volumen', 'volumen_sem', 'superficie_km2', 'n_habitantes', 'prop_vol_masivo', 'canal', 'descr_flag_patente',
+        'volumen_sem_ar1', 'volumen_sem_ar2', 'volumen_sem_fut',
+        'volumen_dif1', 'volumen_dif1_dif12', 'volumen_sem_dif6',
+        'volumen_sem_dif6_fut'
+    ]
+
+    for col in dict_mix[category]:
+        cols_to_drop.append(f'porc_{col}')
+    df1 = df.copy()
+    df1.drop(df1[~df1['id_periodo'].isin(train_date_set)].index, inplace=True)
+    df1.drop(df1[df1['volumen_sem_dif6_fut'].isna()].index, inplace=True)
+    df1.reset_index(drop=True, inplace=True)
+    df1['periodo_date'] = pd.to_datetime(df1['id_periodo'].astype(str), format='%Y%m')
+    df1.drop(columns=cols_to_drop, inplace=True, errors='ignore')
+    return df1
 
 
 class TimeBasedCV(object):

@@ -5,7 +5,7 @@ from src.src_models import train_val, hyperparameters as hyp
 from src.utils import create_directory_if_not_exists
 
 
-def xgboost_cross_validation(train_x, train_y, train_date_set, test_date, category):
+def xgboost_cross_validation(train_x, train_y, preprocessed_data, train_date_set, test_date, category):
     '''
     Validación cruzada para la búsqueda de hiperparámetros, entrega un xml con los
     valores óptimos para cada hiperparametro.
@@ -33,8 +33,8 @@ def xgboost_cross_validation(train_x, train_y, train_date_set, test_date, catego
     # Configuración de GridSearchCV
     gs_cv = {
         'scoring': 'neg_mean_squared_error',
-        'n_jobs': -1,
-        'cv': train_val.get_val_set_index(train_date_set, train_x)
+        'n_jobs': 8,
+        'cv': train_val.get_val_set_index(train_date_set, preprocessed_data, category)
     }
 
     # Pipeline jerárquico para búsqueda de hiperparámetros

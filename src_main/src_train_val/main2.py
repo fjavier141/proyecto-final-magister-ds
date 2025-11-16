@@ -10,6 +10,7 @@ from lightgbm import LGBMRegressor
 import xgboost as xgb
 
 import src.preprocessing as pre
+from src_main.src_search_hyperparams.main import *
 import src.utils as uts
 
 # =========================
@@ -40,6 +41,9 @@ def main():
     X_test  = pre.get_val_data(df, per_test, CATEGORY)
     y_test  = pre.get_val_target(df, per_test)
     df_pred_like = pre.get_pred_set(df, per_test)  # debe traer 'volumen_sem' y 'volumen_sem_dif6_fut_real'
+
+    xgboost_cross_validation(X_train, y_train, df, per_train, per_test, CATEGORY)
+
 
     # 5) Entrenar y evaluar cada modelo
     MODEL_ZOO = build_model_zoo()
