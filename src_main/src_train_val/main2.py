@@ -43,6 +43,9 @@ def main():
     df_pred_like = pre.get_pred_set(df, per_test)  # debe traer 'volumen_sem' y 'volumen_sem_dif6_fut_real'
 
     xgboost_cross_validation(X_train, y_train, df, per_train, per_test, CATEGORY)
+    lightgbm_cross_validation(X_train, y_train, df, per_train, per_test, CATEGORY)
+    random_forest_cross_validation(X_train, y_train, df, per_train, per_test, CATEGORY)
+    ridge_cross_validation(X_train, y_train, df, per_train, per_test, CATEGORY)
 
 
     # 5) Entrenar y evaluar cada modelo

@@ -59,7 +59,7 @@ def xgboost_cross_validation(train_x, train_y, preprocessed_data, train_date_set
 
 
 
-def lightgbm_cross_validation(train_x, train_y, train_date_set, test_date, category):
+def lightgbm_cross_validation(train_x, train_y, preprocessed_data, train_date_set, test_date, category):
     """
     Búsqueda de hiperparámetros para LightGBM usando validación cruzada temporal.
     Guarda un JSON con los hiperparámetros óptimos.
@@ -76,14 +76,14 @@ def lightgbm_cross_validation(train_x, train_y, train_date_set, test_date, categ
         'colsample_bytree': 0.8,
         'reg_alpha': 0.0,
         'reg_lambda': 0.0,
-        'n_jobs': -1,
+        'n_jobs': 8,
         'random_state': 42
     }
 
     gs_cv = {
         'scoring': 'neg_mean_squared_error',
-        'n_jobs': -1,
-        'cv': train_val.get_val_set_index(train_date_set, train_x)
+        'n_jobs': 8,
+        'cv': train_val.get_val_set_index(train_date_set, preprocessed_data, category)
     }
 
     print("Inicio de búsqueda de hiperparámetros LightGBM")
@@ -101,7 +101,7 @@ def lightgbm_cross_validation(train_x, train_y, train_date_set, test_date, categ
     print('Ejecución finalizada de búsqueda de hiperparámetros LightGBM.')
 
 
-def random_forest_cross_validation(train_x, train_y, train_date_set, test_date, category):
+def random_forest_cross_validation(train_x, train_y, preprocessed_data, train_date_set, test_date, category):
     """
     Búsqueda de hiperparámetros para RandomForestRegressor usando validación cruzada temporal.
     Guarda un JSON con los hiperparámetros óptimos.
@@ -113,14 +113,14 @@ def random_forest_cross_validation(train_x, train_y, train_date_set, test_date, 
         'min_samples_split': 2,
         'min_samples_leaf': 1,
         'max_features': 'auto',
-        'n_jobs': -1,
+        'n_jobs': 8,
         'random_state': 42
     }
 
     gs_cv = {
         'scoring': 'neg_mean_squared_error',
-        'n_jobs': -1,
-        'cv': train_val.get_val_set_index(train_date_set, train_x)
+        'n_jobs': 8,
+        'cv': train_val.get_val_set_index(train_date_set,  preprocessed_data, category)
     }
 
     print("Inicio de búsqueda de hiperparámetros RandomForest")
@@ -138,7 +138,7 @@ def random_forest_cross_validation(train_x, train_y, train_date_set, test_date, 
     print('Ejecución finalizada de búsqueda de hiperparámetros RandomForest.')
 
 
-def ridge_cross_validation(train_x, train_y, train_date_set, test_date, category):
+def ridge_cross_validation(train_x, train_y, preprocessed_data, train_date_set, test_date, category):
     """
     Búsqueda de hiperparámetros para Ridge Regression usando validación cruzada temporal.
     Guarda un JSON con los hiperparámetros óptimos.
@@ -151,8 +151,8 @@ def ridge_cross_validation(train_x, train_y, train_date_set, test_date, category
 
     gs_cv = {
         'scoring': 'neg_mean_squared_error',
-        'n_jobs': -1,
-        'cv': train_val.get_val_set_index(train_date_set, train_x)
+        'n_jobs': 8,
+        'cv': train_val.get_val_set_index(train_date_set, preprocessed_data, category)
     }
 
     print("Inicio de búsqueda de hiperparámetros Ridge")
