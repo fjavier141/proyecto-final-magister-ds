@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 import datetime
+import json
+
 import numpy as np
 import pandas as pd
-
 from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import Ridge
@@ -21,7 +22,9 @@ CATEGORY = "cervezas"
 DATA_PICKLE = f"./data/output/pickle/dataset_{CATEGORY}.pickle"
 SEG_PREFIX = "seg_"
 RANDOM_STATE = 42
-
+# Flag global: usar hiperparámetros guardados o defaults del código
+USE_SAVED_HYPERPARAMS = True  # pon False si quieres usar siempre los estándar
+HYPERPARAMS_DIR = "./data/output/hyperparams"
 
 # =========================
 # Flujo principal
@@ -29,6 +32,7 @@ RANDOM_STATE = 42
 def main():
     # 1) Particiones temporales (tus helpers)
     per_train, per_test = uts.get_dates(TEST_PERIOD)
+    test_date = per_test[0]
 
     # 2) Carga y OHE de segmento
     dataset = uts.load_pickle(DATA_PICKLE)
@@ -42,14 +46,14 @@ def main():
     y_test  = pre.get_val_target(df, per_test)
     df_pred_like = pre.get_pred_set(df, per_test)  # debe traer 'volumen_sem' y 'volumen_sem_dif6_fut_real'
 
-    xgboost_cross_validation(X_train, y_train, df, per_train, per_test, CATEGORY)
-    lightgbm_cross_validation(X_train, y_train, df, per_train, per_test, CATEGORY)
-    random_forest_cross_validation(X_train, y_train, df, per_train, per_test, CATEGORY)
-    ridge_cross_validation(X_train, y_train, df, per_train, per_test, CATEGORY)
+    xgboost_cross_validation(X_train, y_train, df, per_train, test_date, CATEGORY)
+    lightgbm_cross_validation(X_train, y_train, df, per_train, test_date, CATEGORY)
+    random_forest_cross_validation(X_train, y_train, df, per_train, test_date, CATEGORY)
+    ridge_cross_validation(X_train, y_train, df, per_train, test_date, CATEGORY)
 
 
     # 5) Entrenar y evaluar cada modelo
-    MODEL_ZOO = build_model_zoo()
+    MODEL_ZOO = build_model_zoo(use_saved_hyperparams=USE_SAVED_HYPERPARAMS, category=CATEGORY, test_period=TEST_PERIOD)
     results = []
 
     for name, model in MODEL_ZOO.items():
@@ -101,52 +105,121 @@ def reconstruct_predictions(df_pred_like: pd.DataFrame, yhat_diff6: np.ndarray) 
 # =========================
 # Modelos a comparar
 # =========================
-def build_model_zoo():
+def build_model_zoo(use_saved_hyperparams: bool = False,
+                    category: str = CATEGORY,
+                    test_period: int = TEST_PERIOD):
     """
     Suma o quita modelos aquí.
     Todos predicen 'volumen_sem_dif6_fut' (el cambio semestral).
+
+    Si use_saved_hyperparams=True, intenta leer hiperparámetros desde disco
+    y sobreescribir los defaults definidos aquí.
     """
+    # =============================
+    # XGBoost
+    # =============================
+    xgb_params = {
+        "learning_rate": 0.05,
+        "n_estimators": 800,
+        "max_depth": 3,
+        "min_child_weight": 7,
+        "gamma": 0.0,
+        "subsample": 0.9,
+        "colsample_bytree": 1.0,
+        "reg_alpha": 10.0,
+        "reg_lambda": 10.0,
+        "objective": "reg:squarederror",
+        "n_jobs": 10,              # controlas threads desde acá
+        "random_state": RANDOM_STATE,
+        "tree_method": "hist",
+        "eval_metric": "rmse",
+    }
+
+    if use_saved_hyperparams:
+        saved = load_hyperparams_from_disk("XGBoost", category, test_period)
+        if saved:
+            # Solo actualizamos claves que existan en el dict del modelo
+            for k, v in saved.items():
+                if k in xgb_params:
+                    xgb_params[k] = v
+
+    xgb_model = xgb.XGBRegressor(**xgb_params)
+
+    # =============================
+    # RandomForest
+    # =============================
+    rf_params = {
+        "n_estimators": 600,
+        "max_depth": None,
+        "min_samples_leaf": 1,
+        "n_jobs": -1,
+        "random_state": RANDOM_STATE,
+    }
+
+    if use_saved_hyperparams:
+        saved = load_hyperparams_from_disk("RandomForest", category, test_period)
+        if saved:
+            for k, v in saved.items():
+                if k in rf_params:
+                    rf_params[k] = v
+
+    rf_model = RandomForestRegressor(**rf_params)
+
+    # =============================
+    # Ridge
+    # =============================
+    ridge_params = {
+        "alpha": 1.0,
+        "fit_intercept": True,
+        # random_state Ridge sólo lo usa con algunos solvers, lo dejamos fijo o None
+    }
+
+    if use_saved_hyperparams:
+        saved = load_hyperparams_from_disk("Ridge", category, test_period)
+        if saved:
+            for k, v in saved.items():
+                if k in ridge_params:
+                    ridge_params[k] = v
+
+    ridge_model = Ridge(**ridge_params)
+
+    # =============================
+    # LightGBM
+    # =============================
+    lgbm_params = {
+        "n_estimators": 1200,
+        "learning_rate": 0.03,
+        "max_depth": -1,          # sin límite, lo controla num_leaves
+        "num_leaves": 63,
+        "min_child_samples": 20,
+        "subsample": 0.9,
+        "colsample_bytree": 0.9,
+        "reg_alpha": 5.0,
+        "reg_lambda": 10.0,
+        "n_jobs": -1,
+        "random_state": RANDOM_STATE,
+        "objective": "regression",
+        "metric": "rmse",
+    }
+
+    if use_saved_hyperparams:
+        saved = load_hyperparams_from_disk("LightGBM", category, test_period)
+        if saved:
+            for k, v in saved.items():
+                if k in lgbm_params:
+                    lgbm_params[k] = v
+
+    lgbm_model = LGBMRegressor(**lgbm_params)
+
+    # =============================
+    # Armamos el zoo
+    # =============================
     return {
-        "Baseline_no_change": None,  # yhat_diff6 = 0
-        "XGBoost": xgb.XGBRegressor(
-            learning_rate=0.05,
-            n_estimators=800,
-            max_depth=3,
-            min_child_weight=7,
-            gamma=0.0,
-            subsample=0.9,
-            colsample_bytree=1.0,
-            reg_alpha=10.0,
-            reg_lambda=10.0,
-            objective="reg:squarederror",
-            n_jobs=10,
-            random_state=RANDOM_STATE,
-            tree_method="hist",
-            eval_metric="rmse"
-        ),
-        "RandomForest": RandomForestRegressor(
-            n_estimators=600,
-            max_depth=None,
-            min_samples_leaf=1,
-            n_jobs=-1,
-            random_state=RANDOM_STATE
-        ),
-        "Ridge": Ridge(alpha=1.0, random_state=None),
-        "LightGBM": LGBMRegressor(
-            n_estimators=1200,
-            learning_rate=0.03,
-            max_depth=-1,        # sin límite, lo controla num_leaves
-            num_leaves=63,       # controla complejidad
-            min_child_samples=20,
-            subsample=0.9,       # bagging_fraction si usas el API nativo
-            colsample_bytree=0.9,# feature_fraction
-            reg_alpha=5.0,
-            reg_lambda=10.0,
-            n_jobs=-1,
-            random_state=RANDOM_STATE,
-            objective="regression",
-            metric="rmse",
-        )
+        "Baseline_no_change": None,   # yhat_diff6 = 0
+        "XGBoost": xgb_model,
+        "RandomForest": rf_model,
+        "Ridge": ridge_model,
+        "LightGBM": lgbm_model,
     }
 
 
@@ -202,6 +275,47 @@ def eval_metrics(df_out: pd.DataFrame) -> dict:
         "sMAPE": sm,
         "n": len(df_out)
     }
+
+
+def load_hyperparams_from_disk(model_name: str,
+                               category: str,
+                               test_period: int,
+                               base_dir: str = HYPERPARAMS_DIR) -> dict:
+    """
+    Lee hiperparámetros desde disco para un modelo dado.
+
+    Convención de nombres de archivo:
+      - XGBoost:      hyperparams_{category}_{test_period}.json
+      - LightGBM:     hyperparams_lgbm_{category}_{test_period}.json
+      - RandomForest: hyperparams_rf_{category}_{test_period}.json
+      - Ridge:        hyperparams_ridge_{category}_{test_period}.json
+    """
+
+    if model_name == "XGBoost":
+        filename = f"hyperparams_xgb_{category}_{test_period}.json"
+    elif model_name == "LightGBM":
+        filename = f"hyperparams_lgbm_{category}_{test_period}.json"
+    elif model_name == "RandomForest":
+        filename = f"hyperparams_rf_{category}_{test_period}.json"
+    elif model_name == "Ridge":
+        filename = f"hyperparams_ridge_{category}_{test_period}.json"
+    else:
+        return {}
+
+    path = os.path.join(base_dir, filename)
+
+    if not os.path.exists(path):
+        print(f"[WARN] No se encontró archivo de hiperparámetros para {model_name}: {path}")
+        return {}
+
+    try:
+        with open(path, "r") as f:
+            params = json.load(f)
+        print(f"[INFO] Hiperparámetros cargados para {model_name} desde {path}")
+        return params
+    except Exception as e:
+        print(f"[WARN] Error leyendo hiperparámetros de {path}: {e}")
+        return {}
 
 
 if __name__ == "__main__":
