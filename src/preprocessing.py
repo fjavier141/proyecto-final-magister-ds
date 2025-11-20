@@ -2,11 +2,15 @@ import os
 
 import numpy as np
 import pandas as pd
+from sklearnex import patch_sklearn
+patch_sklearn()
 from sklearn.impute import KNNImputer
-
-from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from ydata_profiling import ProfileReport
+from sklearn.preprocessing import StandardScaler
+
+
+from dotenv import load_dotenv
 
 
 dict_mix = {
@@ -260,10 +264,15 @@ def fill_nan_values(df: pd.DataFrame, cols_zeros: list, cols_mean: list, cols_me
     # Reemplazar los NA de las columnas con la mediana de la columna
     for col in cols_median:
         df1[col] = df1[col].fillna(df1[col].median())
-    
-    for col in cols_advanced:
+
+    if cols_advanced:
+        data_to_impute = df1[cols_advanced]
+        scaler = StandardScaler()
+        data_scaled = scaler.fit_transform(data_to_impute)
         imputer = KNNImputer(n_neighbors=K_parametro)
-        df1[[col]] = imputer.fit_transform(df1[[col]])
+        data_imputed_scaled = imputer.fit_transform(data_scaled)
+        data_imputed = scaler.inverse_transform(data_imputed_scaled)
+        df1[cols_advanced] = data_imputed
 
     return df1
 
