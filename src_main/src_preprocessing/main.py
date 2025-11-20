@@ -76,7 +76,7 @@ def main():
     cols_zeros = ['ar_mes0', 'ar0', 'ar_mes1', 'ar1', 'ar_mes2', 'ar2', 'ar_mes3', 'ar3']
     cols_advanced = ['indice_gse', 'densidad_hab', 'n_ptos_interes', 'superficie_km2', 'n_habitantes']
 
-    dataset = pre.fill_nan_values(dataset, cols_zeros, cols_mean=[], cols_advanced=cols_advanced,k=5)
+    dataset = pre.fill_nan_values(dataset, cols_zeros, cols_mean=[], cols_median=[], cols_advanced=cols_advanced,K_parametro=5)
 
     dataset = pre.drop_nan_values(dataset, cols_drop)
 
