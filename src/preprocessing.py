@@ -2,6 +2,8 @@ import os
 
 import numpy as np
 import pandas as pd
+from sklearn.impute import KNNImputer
+
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from ydata_profiling import ProfileReport
@@ -31,7 +33,9 @@ def extract_data(category):
     """
 
     # Cargar .env (ajusta ruta a tu entorno)
-    load_dotenv(dotenv_path="D:\\Users\\fjavi\\Proyectos\\proyecto-final-magister-ds\\.env")
+    #env_path = "/Users/diegobascunan/iCloud Drive/Escritorio/Proyecto_Titulo/accesos.env"
+    env_path = "D:\\Users\\fjavi\\Proyectos\\proyecto-final-magister-ds\\.env"
+    load_dotenv(dotenv_path = env_path)
 
     # Parámetros de conexión (ajusta a tu entorno)
     USER = os.getenv("POSTGRES_USER")
@@ -236,11 +240,13 @@ def recency_12_cap(x: pd.Series) -> pd.Series:
     return pd.Series(rec, index=x.index)
 
 
-def fill_nan_values(df: pd.DataFrame, cols_zeros: list, cols_mean: list):
+def fill_nan_values(df: pd.DataFrame, cols_zeros: list, cols_mean: list, cols_median: list, cols_advanced: list, K_parametro=5):
     """
     Reemplaza NaNs:
     - En `cols_zeros`, por 0
     - En `cols_mean`, por la media de la columna (calculada sobre df no vacío)
+    - En 'cols_median', por la mediana de la columna (calculada sobre df no vacío)
+    - En 'col_advanced', usando Knnimputer (k=5) para imputación basada en vecinos
     """
     df1 = df.copy()
 
@@ -251,7 +257,16 @@ def fill_nan_values(df: pd.DataFrame, cols_zeros: list, cols_mean: list):
     for col in cols_mean:
         df1[col] = df1[col].fillna(df1[col].mean())
 
+    # Reemplazar los NA de las columnas con la mediana de la columna
+    for col in cols_median:
+        df1[col] = df1[col].fillna(df1[col].median())
+    
+    for col in cols_advanced:
+        imputer = KNNImputer(n_neighbors=K_parametro)
+        df1[[col]] = imputer.fit_transform(df1[[col]])
+
     return df1
+
 
 
 def drop_nan_values(df: pd.DataFrame, cols_to_drop: list):
@@ -344,6 +359,7 @@ def get_pred_set(df: pd.DataFrame, test_date_set):
         'id_categoria', 'id_periodo', 'id_cliente',
         'volumen_sem_ar1', 'volumen_sem', 'volumen_sem_dif6_fut'
     ]
+  
     df1 = df[cols_to_copy].copy()
     df1.drop(df1[~df1['id_periodo'].isin(test_date_set)].index, inplace=True)
     df1.drop(df1[df1['volumen_sem_dif6_fut'].isna()].index, inplace=True)
@@ -352,4 +368,3 @@ def get_pred_set(df: pd.DataFrame, test_date_set):
     df1.reset_index(drop=True, inplace=True)
     df1['volumen_sem_dif6_fut'] = np.nan
     return df1
-
