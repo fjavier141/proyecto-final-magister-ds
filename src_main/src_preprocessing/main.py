@@ -1,6 +1,7 @@
 import pandas as pd
 from ydata_profiling import ProfileReport
 
+
 import src.preprocessing as pre
 import src.utils as uts
 
@@ -73,9 +74,10 @@ def main():
     # 10) Limpieza de NAs (estrategias simples y controladas)
     cols_drop = ['id_barrio']
     cols_zeros = ['ar_mes0', 'ar0', 'ar_mes1', 'ar1', 'ar_mes2', 'ar2', 'ar_mes3', 'ar3']
-    cols_mean = ['indice_gse', 'densidad_hab', 'n_ptos_interes', 'superficie_km2', 'n_habitantes']
+    cols_advanced = ['indice_gse', 'densidad_hab', 'n_ptos_interes', 'superficie_km2', 'n_habitantes']
 
-    dataset = pre.fill_nan_values(dataset, cols_zeros, cols_mean)
+    dataset = pre.fill_nan_values(dataset, cols_zeros, cols_mean=[], cols_advanced=cols_advanced,k=5)
+
     dataset = pre.drop_nan_values(dataset, cols_drop)
 
     # 11) Diagnóstico rápido (correlación con la y en train)

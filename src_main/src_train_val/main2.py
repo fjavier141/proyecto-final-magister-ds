@@ -4,15 +4,16 @@ import json
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import Ridge
 from lightgbm import LGBMRegressor
 import xgboost as xgb
 
 import src.preprocessing as pre
-from src_main.src_search_hyperparams.main import *
 import src.utils as uts
+from src_main.src_search_hyperparams.main import *
+from src_main.src_train_val.iax_preliminar import log_iax_metrics
+from src_main.src_train_val.metrics import eval_metrics
 
 # =========================
 # Configuración de corrida
@@ -37,13 +38,13 @@ def main():
     # 2) Carga y OHE de segmento
     dataset = uts.load_pickle(DATA_PICKLE)
     df = dataset.copy()
-    df = pd.get_dummies(df, columns=["segmento"], prefix=SEG_PREFIX)
+    df_encoded = pd.get_dummies(df, columns=["segmento"], prefix=SEG_PREFIX)
 
     # 3) Armar train/test (tus helpers)
-    X_train = pre.get_train_data(df, per_train, CATEGORY)
-    y_train = pre.get_train_target(df, per_train)
-    X_test  = pre.get_val_data(df, per_test, CATEGORY)
-    y_test  = pre.get_val_target(df, per_test)
+    X_train = pre.get_train_data(df_encoded, per_train, CATEGORY)
+    y_train = pre.get_train_target(df_encoded, per_train)
+    X_test  = pre.get_val_data(df_encoded, per_test, CATEGORY)
+    y_test  = pre.get_val_target(df_encoded, per_test)
     df_pred_like = pre.get_pred_set(df, per_test)  # debe traer 'volumen_sem' y 'volumen_sem_dif6_fut_real'
 
     xgboost_cross_validation(X_train, y_train, df, per_train, test_date, CATEGORY)
@@ -70,6 +71,7 @@ def main():
         df_out = reconstruct_predictions(df_pred_like, yhat_diff6)
         metrics = eval_metrics(df_out)
         results.append({"Modelo": name, **metrics})
+        log_iax_metrics(name, model, X_test, df_out)
 
         # Muestra rápida
         print(f"Corr: {metrics['Corr']:.3f} | WAPE: {metrics['WAPE']*100:.2f}% | R2: {metrics['R2']:.3f} | "
@@ -243,40 +245,6 @@ def make_finite_y(y: pd.Series) -> pd.Series:
     assert np.isfinite(y.to_numpy()).all(), "Siguen habiendo no finitos en y"
     return y
 
-# =========================
-# Métricas
-# =========================
-def smape(y_true, y_pred):
-    y_true = np.asarray(y_true, dtype=float)
-    y_pred = np.asarray(y_pred, dtype=float)
-    denom = (np.abs(y_true) + np.abs(y_pred))
-    out = np.zeros_like(y_true, dtype=float)
-    mask = denom != 0
-    out[mask] = 2.0 * np.abs(y_pred[mask] - y_true[mask]) / denom[mask]
-    return np.mean(out)
-
-def eval_metrics(df_out: pd.DataFrame) -> dict:
-    y_true = df_out["volumen_sem_fut_real"]
-    y_pred = df_out["volumen_sem_fut_est"]
-
-    corr = y_true.corr(y_pred)
-    wape = (np.abs(y_true - y_pred).sum() / (np.abs(y_true).sum() if np.abs(y_true).sum() != 0 else np.nan))
-    r2 = r2_score(y_true, y_pred)
-    mae = mean_absolute_error(y_true, y_pred)
-    rmse = mean_squared_error(y_true, y_pred)
-    sm = smape(y_true, y_pred)
-
-    return {
-        "Corr": corr,
-        "WAPE": wape,
-        "R2": r2,
-        "MAE": mae,
-        "RMSE": rmse,
-        "sMAPE": sm,
-        "n": len(df_out)
-    }
-
-
 def load_hyperparams_from_disk(model_name: str,
                                category: str,
                                test_period: int,
@@ -316,6 +284,7 @@ def load_hyperparams_from_disk(model_name: str,
     except Exception as e:
         print(f"[WARN] Error leyendo hiperparámetros de {path}: {e}")
         return {}
+
 
 
 if __name__ == "__main__":
