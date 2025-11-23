@@ -103,3 +103,22 @@ FROM
 ORDER BY
   v.id_cliente,
   v.id_periodo;
+
+SELECT *
+from stg.venta_historica
+WHERE
+  liq_um > 0
+LIMIT 100;
+
+
+
+--- ¿Existen clientes que con ventas, cuya información de barrios no está incluida?
+
+SELECT count(DISTINCT
+  v.id_cliente) AS num_clientes_sin_barrio
+FROM
+  stg.venta_historica AS v
+  LEFT JOIN stg.base_clientes AS c ON v.id_cliente = c.id_cliente
+WHERE
+  c.id_barrio IS NULL
+  AND v.liq_um > 0;
