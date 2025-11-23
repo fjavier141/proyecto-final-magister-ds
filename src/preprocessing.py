@@ -245,13 +245,12 @@ def recency_12_cap(x: pd.Series) -> pd.Series:
 
 
 
-def fill_nan_values(df: pd.DataFrame, cols_zeros: list, cols_mean: list, cols_median: list, cols_advanced: list, K_parametro=3):
+def fill_nan_values(df: pd.DataFrame, cols_zeros: list, cols_mean: list, cols_median: list):
     """
     Reemplaza NaNs:
     - En `cols_zeros`, por 0
     - En `cols_mean`, por la media de la columna (calculada sobre df no vacío)
     - En 'cols_median', por la mediana de la columna (calculada sobre df no vacío)
-    - En 'col_advanced', usando Knnimputer (k=3) para imputación basada en vecinos
     """
     df1 = df.copy()
 
@@ -265,15 +264,6 @@ def fill_nan_values(df: pd.DataFrame, cols_zeros: list, cols_mean: list, cols_me
     # Reemplazar los NA de las columnas con la mediana de la columna
     for col in cols_median:
         df1[col] = df1[col].fillna(df1[col].median())
-
-    if cols_advanced:
-        data_to_impute = df1[cols_advanced]
-        scaler = StandardScaler()
-        data_scaled = scaler.fit_transform(data_to_impute)
-        imputer = KNNImputer(n_neighbors=K_parametro)
-        data_imputed_scaled = imputer.fit_transform(data_scaled)
-        data_imputed = scaler.inverse_transform(data_imputed_scaled)
-        df1[cols_advanced] = data_imputed
 
     return df1
 
