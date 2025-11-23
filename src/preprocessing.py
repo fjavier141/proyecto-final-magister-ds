@@ -244,13 +244,14 @@ def recency_12_cap(x: pd.Series) -> pd.Series:
     return pd.Series(rec, index=x.index)
 
 
-def fill_nan_values(df: pd.DataFrame, cols_zeros: list, cols_mean: list, cols_median: list, cols_advanced: list, K_parametro=5):
+
+def fill_nan_values(df: pd.DataFrame, cols_zeros: list, cols_mean: list, cols_median: list, cols_advanced: list, K_parametro=3):
     """
     Reemplaza NaNs:
     - En `cols_zeros`, por 0
     - En `cols_mean`, por la media de la columna (calculada sobre df no vacío)
     - En 'cols_median', por la mediana de la columna (calculada sobre df no vacío)
-    - En 'col_advanced', usando Knnimputer (k=5) para imputación basada en vecinos
+    - En 'col_advanced', usando Knnimputer (k=3) para imputación basada en vecinos
     """
     df1 = df.copy()
 
@@ -276,6 +277,24 @@ def fill_nan_values(df: pd.DataFrame, cols_zeros: list, cols_mean: list, cols_me
 
     return df1
 
+# ---------------------------------------------------------------------
+# Función auxiliar para KNN Imputer
+# ---------------------------------------------------------------------
+
+
+def nan_knn_imputer(df: pd.DataFrame, cols: list, k = 9) -> pd.DataFrame:
+    """Función para imputar valores NaN en columnas específicas usando KNN Imputer para variables dimensionales asociadas a barrios.
+    Args:
+        df (pd.DataFrame): DataFrame original con posibles valores NaN.
+        cols (list): Lista de columnas a imputar.
+        k (int): Número de vecinos a considerar en KNN, se prueba que k = 9 es un buen valor (ver EDA)
+    out:
+        pd.DataFrame: DataFrame con valores NaN imputados en las columnas especificadas.
+    """
+    imputer = KNNImputer(n_neighbors=k)
+    df_imputed = df.copy()
+    df_imputed[cols] = imputer.fit_transform(df[cols])
+    return df_imputed
 
 
 def drop_nan_values(df: pd.DataFrame, cols_to_drop: list):
