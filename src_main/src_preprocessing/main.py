@@ -66,18 +66,22 @@ def main():
     # 8) Features temporales (rolling, lags, AR, recency/frequency, target)
     df_fact = pre.calculate_rolling_lags(agg_sales, category)
 
-
     # 9) Enriquecer con barrios y macro
+
+    ### llenado de datos faltantes avanzado (KNNImputer):
+    
+    ### de barrios:
+    barrios = pre.nan_knn_imputer(barrios, cols = ['indice_gse', 'densidad_hab', 'n_ptos_interes', 'superficie_km2', 'n_habitantes'], k=9)
+
     df_fact = df_fact.merge(barrios, on='id_barrio', how='left')
     dataset = df_fact.merge(macro_vars, on='id_periodo', how='left')
 
     # 10) Limpieza de NAs (estrategias simples y controladas)
     cols_drop = ['id_barrio']
     cols_zeros = ['ar_mes0', 'ar0', 'ar_mes1', 'ar1', 'ar_mes2', 'ar2', 'ar_mes3', 'ar3']
-    cols_advanced = ['indice_gse', 'densidad_hab', 'n_ptos_interes', 'superficie_km2', 'n_habitantes']
+    #cols_advanced = ['indice_gse', 'densidad_hab', 'n_ptos_interes', 'superficie_km2', 'n_habitantes']
 
-    dataset = pre.fill_nan_values(dataset, cols_zeros, cols_mean=[], cols_median=[], cols_advanced=cols_advanced,K_parametro=5)
-
+    dataset = pre.fill_na_with_zeros(dataset, cols_zeros)
     dataset = pre.drop_nan_values(dataset, cols_drop)
 
     # 11) Diagnóstico rápido (correlación con la y en train)
