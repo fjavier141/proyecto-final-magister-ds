@@ -1,5 +1,6 @@
 import datetime
 import os
+from dotenv import load_dotenv
 
 import numpy as np
 import pandas as pd
@@ -10,13 +11,19 @@ from sklearn.metrics import r2_score
 import src.preprocessing as pre
 import src.utils as uts
 
+# Cargar .env (ajusta ruta a tu entorno)
+#env_path = "/Users/diegobascunan/PycharmProjects/proyecto-final-magister-ds/accesos_diego.env"
+env_path = "D:\\Users\\fjavi\\Proyectos\\proyecto-final-magister-ds\\.env"
+load_dotenv(dotenv_path = env_path)
+
+
 segments = ["AL", "BO", "AP", "KI", "BA", "EE", "ES", "FF", "FU", "CD", "IE", "DI", "RT", "RE", "BC", "RC", "GI",
             "FC", "FS", "RD"]
 
 
 def main():
-    test_period = 202412
-    category = 'cervezas'
+    test_period = int(os.getenv("TEST_PERIOD")) # Formato AAAAMM, actualmente configurado como : 202412
+    category = os.getenv("CATEGORY") # 'cervezas' o 'analcoholicos', manejar desde .env la categoría que se usará.
     per_train, per_test = uts.get_dates(test_period)
 
     dataset = uts.load_pickle(f'./data/output/pickle/dataset_{category}.pickle')

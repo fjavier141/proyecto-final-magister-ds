@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 import datetime
 import json
+import os
+from dotenv import load_dotenv
+
 
 import numpy as np
 import pandas as pd
@@ -15,14 +18,19 @@ from src_main.src_search_hyperparams.main import *
 from src_main.src_train_val.iax_preliminar import log_iax_metrics
 from src_main.src_train_val.metrics import eval_metrics
 
+# Cargar .env (ajusta ruta a tu entorno)
+env_path = "/Users/diegobascunan/PycharmProjects/proyecto-final-magister-ds/accesos_diego.env"
+#env_path = "D:\\Users\\fjavi\\Proyectos\\proyecto-final-magister-ds\\.env"
+load_dotenv(dotenv_path = env_path)
+
 # =========================
 # Configuración de corrida
 # =========================
-TEST_PERIOD = 202412
-CATEGORY = "cervezas"
-DATA_PICKLE = f"./data/output/pickle/dataset_{CATEGORY}.pickle"
+TEST_PERIOD = int(os.getenv("TEST_PERIOD")) # Formato AAAAMM, fijado env como : 202412
+CATEGORY = os.getenv("CATEGORY") # 'cervezas' o 'analcoholicos' según .env
+DATA_PICKLE = f"./data/output/pickle/dataset_{CATEGORY}_knn.pickle"
 SEG_PREFIX = "seg_"
-RANDOM_STATE = 42
+RANDOM_STATE = int(os.getenv("RANDOM_STATE") )# para reproducibilidad fijado en .env como 42
 # Flag global: usar hiperparámetros guardados o defaults del código
 USE_SAVED_HYPERPARAMS = True  # pon False si quieres usar siempre los estándar
 HYPERPARAMS_DIR = "./data/output/hyperparams"
@@ -47,10 +55,10 @@ def main():
     y_test  = pre.get_val_target(df_encoded, per_test)
     df_pred_like = pre.get_pred_set(df, per_test)  # debe traer 'volumen_sem' y 'volumen_sem_dif6_fut_real'
 
-    xgboost_cross_validation(X_train, y_train, df, per_train, test_date, CATEGORY)
-    lightgbm_cross_validation(X_train, y_train, df, per_train, test_date, CATEGORY)
-    random_forest_cross_validation(X_train, y_train, df, per_train, test_date, CATEGORY)
-    ridge_cross_validation(X_train, y_train, df, per_train, test_date, CATEGORY)
+    #xgboost_cross_validation(X_train, y_train, df, per_train, test_date, CATEGORY)
+    #lightgbm_cross_validation(X_train, y_train, df, per_train, test_date, CATEGORY)
+    #random_forest_cross_validation(X_train, y_train, df, per_train, test_date, CATEGORY)
+    #ridge_cross_validation(X_train, y_train, df, per_train, test_date, CATEGORY)
 
 
     # 5) Entrenar y evaluar cada modelo

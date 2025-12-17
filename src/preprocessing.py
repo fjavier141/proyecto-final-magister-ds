@@ -2,8 +2,7 @@ import os
 
 import numpy as np
 import pandas as pd
-from sklearnex import patch_sklearn
-patch_sklearn()
+
 from sklearn.impute import KNNImputer
 from sqlalchemy import create_engine, text
 from ydata_profiling import ProfileReport
@@ -37,8 +36,8 @@ def extract_data(category):
     """
 
     # Cargar .env (ajusta ruta a tu entorno)
-    #env_path = "/Users/diegobascunan/iCloud Drive/Escritorio/Proyecto_Titulo/accesos.env"
-    env_path = "D:\\Users\\fjavi\\Proyectos\\proyecto-final-magister-ds\\.env"
+    env_path = "/Users/diegobascunan/PycharmProjects/proyecto-final-magister-ds/accesos_diego.env"
+    #env_path = "D:\\Users\\fjavi\\Proyectos\\proyecto-final-magister-ds\\.env"
     load_dotenv(dotenv_path = env_path)
 
     # Parámetros de conexión (ajusta a tu entorno)

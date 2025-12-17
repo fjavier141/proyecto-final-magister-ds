@@ -1,9 +1,10 @@
 import pandas as pd
 from ydata_profiling import ProfileReport
 
-
+import os
 import src.preprocessing as pre
 import src.utils as uts
+from dotenv import load_dotenv
 
 
 # --- Config estática del dominio ---
@@ -18,14 +19,21 @@ SEGMENTS = [
     "IE", "DI", "RT", "RE", "BC", "RC", "GI", "FC", "FS", "RD",
 ]
 
+# Cargar .env (ajusta ruta a tu entorno)
+
+#env_path = "/Users/diegobascunan/PycharmProjects/proyecto-final-magister-ds/accesos_diego.env"
+env_path = "D:\\Users\\fjavi\\Proyectos\\proyecto-final-magister-ds\\.env"
+load_dotenv(dotenv_path = env_path)
+
 
 def main():
     """
     Orquesta el preprocesamiento end-to-end para una categoría fija.
     Ajusta `category` y `test_date` según el escenario.
     """
-    category = "cervezas"
-    test_date = 202412
+    ## Parámetros (desde .env, como variable de entorno)
+    category = os.getenv("CATEGORY") # 'cervezas' o 'analcoholicos', manejar desde .env la categoría que se usará.
+    test_date = int(os.getenv("TEST_PERIOD")) # Formato AAAAMM, actualmente configurado como : 202412
 
 
     # 1) Extracción
