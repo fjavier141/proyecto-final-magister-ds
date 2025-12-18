@@ -15,8 +15,7 @@ from src_main.src_search_hyperparams.main import lightgbm_cross_validation
 import src.utils as uts
 
 # Cargar .env (ajusta ruta a tu entorno)
-#env_path = "/Users/diegobascunan/PycharmProjects/proyecto-final-magister-ds/accesos_diego.env"
-env_path = "D:\\Users\\fjavi\\Proyectos\\proyecto-final-magister-ds\\.env"
+env_path = ".env"
 load_dotenv(dotenv_path = env_path)
 USE_SAVED_HYPERPARAMS = True  #pon False si quieres usar siempre los estándar
 HYPERPARAMS_DIR = "./data/output/hyperparams"
@@ -39,11 +38,6 @@ def main():
 
     train_x = pre.get_train_data(df_encoded, per_train, category)
     train_y = pre.get_train_target(df_encoded, per_train)
-    train_x = make_finite(train_x)
-    train_y = make_finite_y(train_y)
-
-    #seg_columns = [col for col in segments if col in df.columns]
-    #df = dataset[dataset[seg_columns].eq(1).any(axis=1)]
     test_x = pre.get_val_data(df_encoded, per_test, category)
     test_y = pre.get_val_target(df_encoded, per_test)
     pred = pre.get_pred_set(df_encoded, per_test)
@@ -52,11 +46,9 @@ def main():
 
     model = train_ligthgbm(train_x, train_y, category, test_period, random_state)
 
-    model.fit(train_x, train_y)
-    print("Fin entrenamiento:", datetime.datetime.now())
+    yhat_diff6 = model.predict(test_x)
 
-    reg = entrenar_xgboost(train_x, train_y)
-    df_out = get_df_out(pred, reg, test_x)
+    df_out = reconstruct_predictions(pred, yhat_diff6)
 
     # Correlación de Pearson
     corr = df_out['volumen_sem_fut_real'].corr(df_out['volumen_sem_fut_est'])
@@ -104,21 +96,23 @@ def train_ligthgbm(train_x, train_y, category, test_period, random_state):
     return lgbm_model
 
 
-def get_df_out(df, reg, test_x):
+# Reconstrucción de target
+# =========================
+def reconstruct_predictions(df_pred_like: pd.DataFrame, yhat_diff6: np.ndarray) -> pd.DataFrame:
     """
-    Genera las predicciones finales y ajusta el DataFrame original con las proyecciones desescaladas.
+    df_pred_like DEBE contener al menos:
+      - 'volumen_sem'                 (nivel del semestre actual)
+      - 'volumen_sem_dif6_fut_real'   (para calcular métricas vs real)
     """
-    df1 = df.copy()
-    df1['volumen_sem_dif6_fut'] = reg.predict(test_x)
-    df1['volumen_sem_fut_est'] = df1['volumen_sem'] + df1['volumen_sem_dif6_fut']
-    df1['volumen_sem_fut_real'] = df1['volumen_sem'] + df1['volumen_sem_dif6_fut_real']
-    df1.loc[df1['volumen_sem_fut_est'] < 0, 'volumen_sem_fut_est'] = 0
-    df1['volumen_sem_ar1'] = df1['volumen_sem_ar1'].fillna(0)
-    df1['mape'] = abs((df1['volumen_sem_fut_real'] - df1['volumen_sem_fut_est']) / df1['volumen_sem_fut_real'])
-    df1.drop(df1[df1['volumen_sem_fut_est'].isna()].index, inplace=True)
-    cols_to_drop = ['volumen_sem_dif6_fut', 'volumen_sem_dif6_fut_real']
-    df1.drop(columns=cols_to_drop, inplace=True)
-    return df1
+    out = df_pred_like.copy()
+    out["volumen_sem_dif6_fut"] = yhat_diff6
+    out["volumen_sem_fut_est"] = out["volumen_sem"] + out["volumen_sem_dif6_fut"]
+    out["volumen_sem_fut_real"] = out["volumen_sem"] + out["volumen_sem_dif6_fut_real"]
+    # Negativos a cero (regla de negocio)
+    out.loc[out["volumen_sem_fut_est"] < 0, "volumen_sem_fut_est"] = 0
+    # Limpieza mínima
+    out.drop(columns=["volumen_sem_dif6_fut"], inplace=True)
+    return out
 
 
 def make_finite(X):
@@ -182,34 +176,3 @@ def load_hyperparams_from_disk(model_name: str,
     except Exception as e:
         print(f"[WARN] Error leyendo hiperparámetros de {path}: {e}")
         return {}
-
-
-def entrenar_xgboost(train_x, train_y):
-    """
-    Entrena un modelo XGBoost con early stopping utilizando test_x y test_y como conjunto de validación.
-    """
-    reg = xgb.XGBRegressor(
-        learning_rate=0.05,
-        n_estimators=800,
-        max_depth=3,
-        min_child_weight=7,
-        gamma=0.0,
-        subsample= 0.9,
-        colsample_bytree=1,
-        reg_alpha=10,
-        reg_lambda=10,
-        objective="reg:squarederror",
-        nthread=10
-    )
-
-    print('Comienzo entrenamiento: ', datetime.datetime.now())
-    reg.fit(
-        train_x,
-        train_y,
-        #eval_set=[(test_x, test_y)],
-        #early_stopping_rounds=50,
-        verbose=True
-    )
-    print('Fin entrenamiento: ', datetime.datetime.now())
-
-    return reg
