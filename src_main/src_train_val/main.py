@@ -14,6 +14,7 @@ from parameters.config import *
 
 def main():
     validation_periods = uts.get_validation_periods(TEST_PERIOD, 4)
+    validation_periods = [202412] #Comentar si es que desea usar la linea de arriba (4 periodos de validacion)
     dataset = uts.load_pickle(f'./data/output/pickle/dataset_{CATEGORY}.pickle')
     dataset = dataset[(dataset["volumen_sem"].fillna(0) > 0) | (dataset["volumen_sem_ar1"].fillna(0) > 0)]
     df = dataset.copy()
