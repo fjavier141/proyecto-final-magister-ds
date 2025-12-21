@@ -2,14 +2,13 @@ import os
 
 import numpy as np
 import pandas as pd
-
 from sklearn.impute import KNNImputer
 from sqlalchemy import create_engine, text
 from ydata_profiling import ProfileReport
 from sklearn.preprocessing import StandardScaler
-
-
 from dotenv import load_dotenv
+
+from parameters.config import *
 
 
 dict_mix = {
@@ -34,18 +33,6 @@ def extract_data(category):
     -------
     (clientes, barrios, macro_vars, sales)
     """
-
-    # Cargar .env (ajusta ruta a tu entorno)
-    env_path = "/Users/diegobascunan/PycharmProjects/proyecto-final-magister-ds/accesos_diego.env"
-    #env_path = "D:\\Users\\fjavi\\Proyectos\\proyecto-final-magister-ds\\.env"
-    load_dotenv(dotenv_path = env_path)
-
-    # Parámetros de conexión (ajusta a tu entorno)
-    USER = os.getenv("POSTGRES_USER")
-    PASSWORD = os.getenv("POSTGRES_PASSWORD")
-    HOST = os.getenv("POSTGRES_HOST")
-    PORT = os.getenv("POSTGRES_PORT", "5432")
-    DB = os.getenv("POSTGRES_DB")
 
     # Crea el motor SQLAlchemy
     engine = create_engine(f"postgresql+psycopg2://{USER}:{PASSWORD}@{HOST}:{PORT}/{DB}")
@@ -158,6 +145,47 @@ def fill_missing_periods(sales):
     return sales
 
 
+def fill_missing_periods_by_client(sales: pd.DataFrame) -> pd.DataFrame:
+    sales = sales.copy()
+    sales["id_periodo"] = sales["id_periodo"].astype(int)
+
+    # Periodo mensual real
+    sales["_per"] = _to_period(sales["id_periodo"])
+    if sales["_per"].isna().any():
+        bad = sales.loc[sales["_per"].isna(), "id_periodo"].unique()
+        raise ValueError(f"id_periodo inválidos (esperado YYYYMM con MM 01..12): {bad[:20]}")
+
+    out = []
+    for id_cli, df_c in sales.groupby("id_cliente", sort=False):
+        df_c = df_c.sort_values("id_periodo").copy()
+        min_per = df_c["_per"].min()
+        max_per = df_c["_per"].max()
+
+        full_per = pd.period_range(min_per, max_per, freq="M")
+        full_p = pd.DataFrame({
+            "_per": full_per,
+            "id_periodo": (full_per.year * 100 + full_per.month).astype(int)
+        })
+
+        df_c2 = full_p.merge(df_c.drop(columns=["id_cliente"], errors="ignore"),
+                             on=["id_periodo", "_per"], how="left")
+        df_c2["id_cliente"] = id_cli
+        out.append(df_c2)
+
+    sales_full = pd.concat(out, ignore_index=True)
+
+    # Limpieza
+    sales_full.drop(columns=["_per"], inplace=True, errors="ignore")
+    return sales_full
+
+
+def _to_period(s: pd.Series) -> pd.PeriodIndex:
+    # id_periodo: YYYYMM (mes 01..12)
+    # Convertimos a Period[M] para poder generar rangos mensuales reales.
+    dt = pd.to_datetime(s.astype(str), format="%Y%m", errors="coerce")
+    return dt.dt.to_period("M")
+
+
 def calculate_rolling_lags(agg_sales, category):
     """
     Genera:
@@ -176,7 +204,7 @@ def calculate_rolling_lags(agg_sales, category):
     # Rolling 6m del volumen
     sales["volumen_sem"] = (
         sales.groupby("id_cliente")["volumen"]
-        .transform(lambda x: x.rolling(window=6, min_periods=1).sum())
+        .transform(lambda x: x.rolling(window=6, min_periods=6).sum())
     )
 
     # Promedio móvil 6m de proporciones de mix
@@ -185,15 +213,19 @@ def calculate_rolling_lags(agg_sales, category):
 
     # Lags de volumen_sem
     sales.sort_values(by=['id_cliente', 'id_periodo'], inplace=True, ignore_index=True)
-    sales['volumen_sem_ar1'] = sales.groupby(['id_cliente'])['volumen_sem'].shift(6)
-    sales['volumen_sem_ar2'] = sales.groupby(['id_cliente'])['volumen_sem'].shift(12)
-    sales['volumen_sem_fut'] = sales.groupby(['id_cliente'])['volumen_sem'].shift(-6)
+    sales['volumen_sem_ar1'] = sales.groupby(['id_cliente'])['volumen_sem'].shift(6).fillna(0)
+    sales['volumen_sem_ar2'] = sales.groupby(['id_cliente'])['volumen_sem'].shift(12).fillna(0)
+    sales['volumen_sem_fut'] = sales.groupby(['id_cliente'])['volumen_sem'].shift(-6).fillna(0)
 
     # Diferencias
     sales.sort_values(by=['id_cliente', 'id_periodo'], inplace=True, ignore_index=True)
     sales['volumen_dif1'] = sales.groupby(['id_cliente'])['volumen'].diff()
     sales['volumen_dif1_dif12'] = sales.groupby(['id_cliente'])['volumen_dif1'].diff(12)
     sales['volumen_sem_dif6'] = sales.groupby(['id_cliente'])['volumen_sem'].diff(6)
+
+    # Cambio relativo a 6m (MUY potente para crecimiento)
+    eps = 1e-3
+    sales["vol_sem_rel_dif6"] = sales["volumen_sem_dif6"] / (sales["volumen_sem_ar1"] + eps)
 
     # AR sobre diferencias (mes a mes y cada 6 meses)
     sales.sort_values(by=['id_cliente', 'id_periodo'], inplace=True, ignore_index=True)
@@ -243,7 +275,7 @@ def recency_12_cap(x: pd.Series) -> pd.Series:
     return pd.Series(rec, index=x.index)
 
 
-def fill_nan_values(df: pd.DataFrame, cols_zeros: list, cols_mean: list, cols_median: list, cols_advanced: list, K_parametro=5):
+def fill_nan_values(df: pd.DataFrame, cols_zeros: list, cols_mean: list, cols_median: list):
     """
     Reemplaza NaNs:
     - En `cols_zeros`, por 0
@@ -264,17 +296,26 @@ def fill_nan_values(df: pd.DataFrame, cols_zeros: list, cols_mean: list, cols_me
     for col in cols_median:
         df1[col] = df1[col].fillna(df1[col].median())
 
-    if cols_advanced:
-        data_to_impute = df1[cols_advanced]
-        scaler = StandardScaler()
-        data_scaled = scaler.fit_transform(data_to_impute)
-        imputer = KNNImputer(n_neighbors=K_parametro)
-        data_imputed_scaled = imputer.fit_transform(data_scaled)
-        data_imputed = scaler.inverse_transform(data_imputed_scaled)
-        df1[cols_advanced] = data_imputed
-
     return df1
 
+
+# ---------------------------------------------------------------------
+# Función auxiliar para KNN Imputer
+# ---------------------------------------------------------------------
+
+def nan_knn_imputer(df: pd.DataFrame, cols: list, k = 9) -> pd.DataFrame:
+    """Función para imputar valores NaN en columnas específicas usando KNN Imputer para variables dimensionales asociadas a barrios.
+    Args:
+        df (pd.DataFrame): DataFrame original con posibles valores NaN.
+        cols (list): Lista de columnas a imputar.
+        k (int): Número de vecinos a considerar en KNN, se prueba que k = 9 es un buen valor (ver EDA)
+    out:
+        pd.DataFrame: DataFrame con valores NaN imputados en las columnas especificadas.
+    """
+    imputer = KNNImputer(n_neighbors=k)
+    df_imputed = df.copy()
+    df_imputed[cols] = imputer.fit_transform(df[cols])
+    return df_imputed
 
 
 def drop_nan_values(df: pd.DataFrame, cols_to_drop: list):

@@ -1,8 +1,7 @@
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import seaborn as sns
-from src_main.src_train_val.metrics import eval_metrics
+from src.metrics import eval_metrics
 
 # =========================
 # Funciones IAX 

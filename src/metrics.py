@@ -13,15 +13,15 @@ def smape(y_true, y_pred):
     return np.mean(out)
 
 
-def eval_metrics(df_out: pd.DataFrame) -> dict:
-    y_true = df_out["volumen_sem_fut_real"]
-    y_pred = df_out["volumen_sem_fut_est"]
+def eval_metrics(df_out: pd.DataFrame, y_true_label, y_pred_label) -> dict:
+    y_true = df_out[y_true_label]
+    y_pred = df_out[y_pred_label]
 
     corr = y_true.corr(y_pred)
     wape = (np.abs(y_true - y_pred).sum() / (np.abs(y_true).sum() if np.abs(y_true).sum() != 0 else np.nan))
     r2 = r2_score(y_true, y_pred)
     mae = mean_absolute_error(y_true, y_pred)
-    rmse = mean_squared_error(y_true, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
     sm = smape(y_true, y_pred)
 
     return {

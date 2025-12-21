@@ -25,6 +25,19 @@ def get_dates(test_date: int):
     return per_train, per_test
 
 
+def get_validation_periods(test_date: int, n_periods: int):
+    per_val = []
+    for i in range(1, n_periods + 1):
+        fecha = pd.to_datetime(str(test_date), format='%Y%m')
+        fecha = pd.to_datetime(str(test_date), format='%Y%m')
+        train_date = fecha - pd.DateOffset(months=i * 6)
+        train_date_int = int(train_date.strftime('%Y%m'))
+        if train_date_int >= 201707:
+            per_val.append(train_date_int)
+    per_val.sort()
+    return per_val
+
+
 def create_directory_if_not_exists(paths):
     for path in paths:
         if not os.path.exists(path):
