@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 import datetime
-import json
-import os
 from dotenv import load_dotenv
 
 
@@ -16,7 +14,7 @@ import src.preprocessing as pre
 import src.utils as uts
 from src_main.src_search_hyperparams.main import *
 from src_main.src_train_val.iax_preliminar import log_iax_metrics
-from src_main.src_train_val.metrics import eval_metrics
+from src.metrics import eval_metrics
 
 # Cargar .env (ajusta ruta a tu entorno)
 env_path = "/Users/diegobascunan/PycharmProjects/proyecto-final-magister-ds/accesos_diego.env"
