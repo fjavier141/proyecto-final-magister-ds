@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 
 #Ajusta segun tu entorno
-env_path = ".env"
+env_path = "/Users/diegobascunan/PycharmProjects/proyecto-final-magister-ds/accesos_diego.env"
 load_dotenv(dotenv_path=env_path)
 
 USE_SAVED_HYPERPARAMS = True  #pon False si quieres usar siempre los estándar

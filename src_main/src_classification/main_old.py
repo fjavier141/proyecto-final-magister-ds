@@ -15,6 +15,7 @@ from sklearn.metrics import silhouette_score
 import src.utils as uts
 from parameters.config import *
 
+
 def main():
     ## importe de datos y periodos de clustering:
     clustering_periodos = [202406]
@@ -32,22 +33,22 @@ def main():
     # X_train y escalamiento de variables:
     X = get_X_for_clustering(df_filtered)
 
-    k = 5
     # Selección de k óptimo:
-    #k_optimo = select_k_silhouette(X, k_min=2, k_max=10)
-    k_optimo = k
+    k_optimo = 5 ## Modificar si se desea re-ejecutar la selección de k
     print(f'Número óptimo de clusters (k) seleccionado: {k_optimo}')
+
     # Entrenamiento de KMeans con k óptimo:
     labels = fit_kmeans(X, n_clusters=k_optimo)
     # Asignación de labels al dataset original:
     df_filtered['cluster'] = labels
+
     # persistencia de resultados:
     uts.save_pickle(df_filtered, f'./data/output/pickle/clusters_kmeans_{CATEGORY}_{TEST_PERIOD}.pickle')
 
 
-
-
-
+# -----------------------------
+# Funciones adicionales para el proceso de clustering:
+# -----------------------------
 
 def filter_join_data(dataset_predict, dataset_processing) -> pd.DataFrame:
     '''
@@ -90,9 +91,8 @@ def get_X_for_clustering(df: pd.DataFrame) -> pd.DataFrame:
         pd.DataFrame, dataset preparado para clustering
     '''
 
-    #cols_to_drop = ['id_cliente','id_periodo','id_barrio', 'id_comuna','canal','segmento','indice_gse', 'volumen_sem_fut_est']
-    #X = df.drop(cols_to_drop, axis=1)
-    X = df[['volumen_sem_fut_est']]
+    cols_to_drop = ['id_cliente','id_periodo','id_barrio', 'id_comuna','canal','segmento','indice_gse', 'volumen_sem_fut_est']
+    X = df.drop(cols_to_drop, axis=1)
 
     ## Regularización y escalamiento de variables:
 

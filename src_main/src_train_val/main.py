@@ -30,15 +30,27 @@ def main():
         test_x = pre.get_val_data(df_encoded, per_test, CATEGORY)
         test_y = pre.get_val_target(df_encoded, per_test)
         pred = pre.get_pred_set(df_encoded, per_test)
+        pred_train = pre.get_pred_set(df_encoded, per_train)
 
         #Búsqueda de hiperparámetros, comentar si no se va a utilizar
-        lightgbm_cross_validation(train_x, train_y, df, per_train, validation_period, CATEGORY)
+        #lightgbm_cross_validation(train_x, train_y, df, per_train, validation_period, CATEGORY)
 
         model = train_ligthgbm(train_x, train_y, CATEGORY, validation_period, RANDOM_STATE)
 
-        yhat_diff6 = model.predict(test_x)
+        yhat_diff6 = model.predict(test_x) ## Predicción sobre test
 
+        ## Predicción sobre train:
+        yhat_diff6_train = model.predict(train_x) # Predicción sobre train
+
+
+        # Creación DataFrame de salida con predicciones reconstruidas:
+        df_out_train = reconstruct_predictions(pred_train, yhat_diff6_train)
         df_out = reconstruct_predictions(pred, yhat_diff6)
+
+        metrics = eval_metrics(df_out)
+
+        ### Guardar valores de predicción del modelo final:
+        uts.save_pickle(df_out_train, f'./data/output/pickle/predictions_lgbm_{CATEGORY}_{TEST_PERIOD}_vf.pickle')
 
         # Se obtienen métricas de volumen
         metrics_volume = eval_metrics(df_out, 'volumen_sem_fut_real', 'volumen_sem_fut_est')
@@ -46,7 +58,9 @@ def main():
         for k, v in metrics_volume.items():
             print(f"  {k}: {v:.4f}" if isinstance(v, (int, float)) else f"  {k}: {v}")
 
+        # Cálculo de crecimiento:
         df_out = calculate_grow(df_out)
+        df_out_train = calculate_grow(df_out_train)
 
         # Se obtienen métricas de crecimiento
         df_crec_norm = df_out[(df_out['crecimiento_fut_real'] < 5) & (df_out['crecimiento_fut_est'] < 5)]
