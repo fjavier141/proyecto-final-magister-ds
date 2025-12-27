@@ -11,6 +11,9 @@ import src.utils as uts
 from src.metrics import eval_metrics
 from parameters.config import *
 
+#Explicabilidad (modelo SHAP)
+import matplotlib.pyplot as plt
+import shap
 
 def main():
     validation_periods = uts.get_validation_periods(TEST_PERIOD, 4)
@@ -36,6 +39,10 @@ def main():
         #lightgbm_cross_validation(train_x, train_y, df, per_train, validation_period, CATEGORY)
 
         model = train_ligthgbm(train_x, train_y, CATEGORY, validation_period, RANDOM_STATE)
+
+        # Explicabilidad del modelo (nueva línea) --> descomentar si se desea generar gráficos
+        explain_model(model, train_x, CATEGORY, validation_period)
+        plot_shap_dependence(model, train_x, 'ar0', CATEGORY, validation_period)
 
         yhat_diff6 = model.predict(test_x) ## Predicción sobre test
 
@@ -192,3 +199,71 @@ def calculate_grow(df):
     df_new['crecimiento_fut_est'] = (df_new["volumen_sem_fut_est"] + df_new["volumen_sem"]) / den
 
     return df_new
+
+### IAX ###
+
+def explain_model(model, train_x, category, validation_period):
+    '''
+    Función para explicar el modelo utilizando SHAP y generar gráficos de resumen y dependencia.
+    inputs:
+        model
+        train_x
+        category
+        validation_period
+    outputs:
+        shap_values (graficos de resumen y dependencia)
+    '''
+
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(train_x)
+
+    # 1. Resumen Global (Summary Plot)
+    # Muestra qué variables son más importantes y si valores altos/bajos suben o bajan la predicción
+    plt.figure(figsize=(10, 6))
+    shap.summary_plot(shap_values, train_x, show=False)
+    plt.title(f"Impacto de Variables (SHAP) - {category} {validation_period}")
+
+    # Guardar el gráfico
+    plot_path = f'./data/output/plots/shap_summary_{category}_{validation_period}.png'
+    plt.savefig(plot_path, bbox_inches='tight')
+
+
+    # 2. Importancia de variables promedio (Bar Plot)
+    plt.figure(figsize=(10, 6))
+    shap.summary_plot(shap_values, train_x, plot_type="bar", show=False)
+    plt.xlabel("Importancia promedio |SHAP value|")
+    plt.ylabel("Variables")
+    plt.title(f"Importancia de Variables (SHAP) - {category} {validation_period}")
+    plt.savefig(f'./data/output/plots/shap_importance_{category}_{validation_period}.png', bbox_inches='tight')
+
+
+
+def plot_shap_dependence(model, train_x, feature_name, category, validation_period, interaction_feature='auto'):
+    """
+    Genera un gráfico de dependencia SHAP para una variable específica.
+    Ayuda a ver si la relación es lineal, curva o si hay saltos bruscos.
+    """
+
+
+    # Asegurar que la carpeta de salida existe
+
+    # Calcular SHAP values
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(train_x)
+
+    # Crear el gráfico
+    # interaction_index='auto' busca la variable con la que existe mayor interacción
+    plt.figure(figsize=(10, 7))
+    shap.dependence_plot(
+        feature_name,
+        shap_values,
+        train_x,
+        interaction_index=interaction_feature,
+        show=False
+    )
+
+    plt.title(f"Análisis de Dependencia: {feature_name} ({category} {validation_period})")
+    # Guardar
+    path = f'./data/output/plots/dependence_{feature_name}_{category}_{validation_period}.png'
+    plt.savefig(path, bbox_inches='tight')
+
