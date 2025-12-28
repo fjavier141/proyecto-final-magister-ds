@@ -2,6 +2,8 @@
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+import matplotlib.ticker as mtick
+from matplotlib.ticker import FuncFormatter
 import seaborn as sns
 import warnings
 warnings.filterwarnings('ignore')
@@ -16,36 +18,59 @@ from sklearn.metrics import silhouette_score
 import src.utils as uts
 from parameters.config import *
 
+def set_plot_style():
+    sns.set_theme(style="whitegrid", context="talk", palette="Set2")
+
+def thousands_with_dot(x, pos=None):
+    # 1234567 -> 1.234.567
+    try:
+        return f"{int(round(x)):,}".replace(",", ".")
+    except Exception:
+        return str(x)
+
+PRETTY_LABELS = {
+    "size_base": "Volumen Anual",
+    "volumen_crecimiento_sem_fut": "Crecimiento Estimado"
+}
+
 def main():
     validation_periods = uts.get_validation_periods(TEST_PERIOD, 1)
 
     for validation_period in validation_periods:
         path_validation = os.path.join(f"./data/output/validation/{CATEGORY}/{CHANNEL}/{validation_period}")
         dataset_predict = uts.load_pickle(os.path.join(path_validation, "scoring_lgbm.pkl"))
-
+        dataset_predict['volumen_crecimiento_sem_fut'] = dataset_predict['volumen_sem_fut_est'] - dataset_predict['volumen_sem']
         X = get_X_for_clustering(dataset_predict)
 
         # Selección de k óptimo:
         best_k, k_ranking = select_k(X, k_min=2, k_max=10)
-        best_k = 5
 
+        # Plot elbow (con línea en k elegido)
+        plot_elbow_from_metrics(k_ranking, highlight_k=best_k)
+
+        best_k = 5
         print(f'Número óptimo de clusters (k) seleccionado: {best_k}')
+
         # Entrenamiento de KMeans con k óptimo:
         labels = fit_kmeans(X, n_clusters=best_k)
+
         # Asignación de labels al dataset original:
         dataset_predict['cluster'] = labels
-        cluster_vars = ['crecimiento_fut_est', 'size_base']
+        dataset_predict["cluster_id"] = dataset_predict["cluster"] + 1
 
+        # Boxplots (bonitos)
+        cluster_vars = ['volumen_crecimiento_sem_fut', 'size_base']
         boxplots_by_cluster(
             dataset_predict,
             vars_to_plot=cluster_vars,
             title_prefix=f"KMeans (k={best_k}) – "
         )
 
+        # Gráfico combinado (volumen total + #clientes)
+        plot_cluster_volume_and_clients(dataset_predict)
+
         # persistencia de resultados:
         uts.save_pickle(dataset_predict, os.path.join(path_validation, 'clusters_kmeans.pkl'))
-
-
 
 
 def filter_join_data(dataset_predict, dataset_processing) -> pd.DataFrame:
@@ -91,13 +116,13 @@ def get_X_for_clustering(df: pd.DataFrame) -> pd.DataFrame:
 
     #cols_to_drop = ['id_cliente','id_periodo','id_barrio', 'id_comuna','canal','segmento','indice_gse', 'volumen_sem_fut_est']
     #X = df.drop(cols_to_drop, axis=1)
-    X = df[['crecimiento_fut_est', 'size_base']]
+    X = df[['volumen_crecimiento_sem_fut', 'size_base']]
 
-    X['size_base'] = np.log1p(X['size_base'])
+    #X['size_base'] = np.log1p(X['size_base'])
 
-    X['crecimiento_fut_est'] = np.log1p(
+    '''X['crecimiento_fut_est'] = np.log1p(
         X['crecimiento_fut_est'].clip(lower=0)
-    )
+    )'''
 
     ## Regularización y escalamiento de variables:
 
@@ -269,7 +294,7 @@ def diagnose_clustering_data(df: pd.DataFrame):
     print("\n============================================")
 
 
-def boxplots_by_cluster(
+'''def boxplots_by_cluster(
     df: pd.DataFrame,
     vars_to_plot: list[str],
     cluster_col: str = "cluster",
@@ -299,7 +324,126 @@ def boxplots_by_cluster(
         plt.xlabel("Cluster")
         plt.ylabel(var)
         plt.tight_layout()
+        plt.show()'''
+
+def boxplots_by_cluster(
+    df: pd.DataFrame,
+    vars_to_plot: list[str],
+    cluster_col: str = "cluster_id",
+    title_prefix: str = "",
+    figsize=(11, 6),
+):
+    """
+    Boxplots por cluster para variables seleccionadas.
+    Mejorado para presentación (labels, separador de miles, línea 0 en crecimiento).
+    """
+    set_plot_style()
+
+    for var in vars_to_plot:
+        pretty = PRETTY_LABELS.get(var, var)
+
+        plt.figure(figsize=figsize)
+        ax = sns.boxplot(
+            data=df,
+            x=cluster_col,
+            y=var,
+            showfliers=False
+        )
+
+        # Línea 0 solo para crecimiento
+        if var == "volumen_crecimiento_sem_fut":
+            ax.axhline(0, color="gray", linestyle="--", linewidth=1)
+
+        ax.set_title(f"{title_prefix}Distribución de {pretty} por cluster", pad=12)
+        ax.set_xlabel("Cluster")
+        ax.set_ylabel(pretty)
+
+        ax.yaxis.set_major_formatter(FuncFormatter(thousands_with_dot))
+        plt.tight_layout()
         plt.show()
+
+def plot_cluster_volume_and_clients(
+    df: pd.DataFrame,
+    cluster_col: str = "cluster_id",
+    volume_col: str = "size_base",
+    figsize=(12, 6),
+    title="Tamaño de los Clusters: Volumen Anual Total y Número de Clientes",
+):
+    """
+    Un solo gráfico:
+    - Barras: suma de Volumen Anual por cluster
+    - Línea/puntos (eje derecho): número de clientes por cluster
+    """
+    set_plot_style()
+
+    agg = (
+        df.groupby(cluster_col, as_index=False)
+          .agg(
+              volumen_total=(volume_col, "sum"),
+              n_clientes=(cluster_col, "size")
+          )
+          .sort_values(cluster_col)
+          .reset_index(drop=True)
+    )
+
+    x_pos = np.arange(len(agg))
+
+    fig, ax1 = plt.subplots(figsize=figsize)
+
+    # 🔵 Barras: Volumen anual
+    ax1.bar(
+        x_pos,
+        agg["volumen_total"],
+        color="#4C72B0",      # azul suave
+        alpha=0.85
+    )
+    ax1.set_title(title, pad=12)
+    ax1.set_xlabel("Cluster")
+    ax1.set_ylabel("Volumen Anual Total")
+    ax1.yaxis.set_major_formatter(FuncFormatter(thousands_with_dot))
+
+    ax1.set_xticks(x_pos)
+    ax1.set_xticklabels(agg[cluster_col])
+
+    # 🟠 Línea: número de clientes
+    ax2 = ax1.twinx()
+    ax2.plot(
+        x_pos,
+        agg["n_clientes"],
+        color="#DD8452",      # naranja contrastante
+        marker="o",
+        linewidth=2.5,
+        markersize=7
+    )
+    ax2.set_ylabel("Número de Clientes")
+    ax2.yaxis.set_major_formatter(FuncFormatter(thousands_with_dot))
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_elbow_from_metrics(
+    metrics: pd.DataFrame,
+    title="Método del Codo (Elbow) – KMeans",
+    figsize=(10, 6),
+    highlight_k: int | None = None,
+):
+    set_plot_style()
+
+    metrics_sorted = metrics.sort_values("k")
+
+    plt.figure(figsize=figsize)
+    plt.plot(metrics_sorted["k"], metrics_sorted["inertia"], marker="o")
+    plt.title(title, pad=12)
+    plt.xlabel("Número de clusters (k)")
+    plt.ylabel("Inercia")
+    plt.gca().yaxis.set_major_formatter(FuncFormatter(thousands_with_dot))
+
+    if highlight_k is not None:
+        plt.axvline(highlight_k, linestyle="--", linewidth=1)
+
+    plt.tight_layout()
+    plt.show()
 
 
 if __name__ == "__main__":
