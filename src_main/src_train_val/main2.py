@@ -137,7 +137,7 @@ def build_model_zoo(use_saved_hyperparams: bool = False,
         "reg_alpha": 10.0,
         "reg_lambda": 10.0,
         "objective": "reg:squarederror",
-        "n_jobs": 10,              # controlas threads desde acá
+        "n_jobs": 6,              # controlas threads desde acá
         "random_state": RANDOM_STATE,
         "tree_method": "hist",
         "eval_metric": "rmse",

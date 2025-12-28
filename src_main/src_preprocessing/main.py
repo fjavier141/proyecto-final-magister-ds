@@ -1,8 +1,10 @@
 from ydata_profiling import ProfileReport
+import numpy as np
 
 from parameters.config import *
 import src.preprocessing as pre
 import src.utils as uts
+import src.macro_vars as mvars
 
 
 def main():
@@ -50,24 +52,31 @@ def main():
     agg_sales["volumen"] = agg_sales["volumen"].fillna(0)
 
     # 8) Features temporales (rolling, lags, AR, recency/frequency, target)
-    df_fact = pre.calculate_rolling_lags(agg_sales, CATEGORY)
+    #df_fact = pre.calculate_rolling_lags(agg_sales, CATEGORY)
+    df_fact = pre.calculate_rolling_lags_2(agg_sales, CATEGORY)
 
     # 9) Enriquecer con barrios y macro
     barrios = pre.nan_knn_imputer(barrios, cols=['indice_gse', 'densidad_hab', 'n_ptos_interes', 'superficie_km2',
                                                  'n_habitantes'], k=9)
     df_fact = df_fact.merge(barrios, on='id_barrio', how='left')
+    macro_vars = mvars.main(macro_vars)
     dataset = df_fact.merge(macro_vars, on='id_periodo', how='left')
 
     # 10) Limpieza de NAs (estrategias simples y controladas)
     cols_drop = ['id_barrio']
-    cols_zeros = ['ar_mes0', 'ar0', 'ar_mes1', 'ar1', 'ar_mes2', 'ar2', 'ar_mes3', 'ar3', 'vol_sem_rel_dif6']
-    #cols_advanced = ['indice_gse', 'densidad_hab', 'n_ptos_interes', 'superficie_km2', 'n_habitantes']
-
-    dataset = pre.fill_nan_values(dataset, cols_zeros, cols_mean=[], cols_median=[])
+    cols_zeros = ['ar_mes0', 'ar0', 'ar_mes1', 'ar1', 'ar_mes2', 'ar2', 'ar_mes3', 'ar3']
+    cols_zeros = [c for c in cols_zeros if c in dataset.columns]
 
     dataset = pre.drop_nan_values(dataset, cols_drop)
+    dataset = pre.fill_nan_values(dataset, cols_zeros, cols_mean=[], cols_median=[])
 
-    # 11) Diagnóstico rápido (correlación con la y en train)
+    # 11) Se agrega número de semestre a periodos 06 o 12
+    dataset["semestre"] = np.where(
+        dataset["id_periodo"] % 100 == 12, 1,
+        np.where(dataset["id_periodo"] % 100 == 6, 2, np.nan)
+    )
+
+    # 12) Diagnóstico rápido (correlación con la y en train)
     per_train, per_test = uts.get_dates(TEST_PERIOD)
 
     filter_dataset = dataset[dataset['id_periodo'].isin(per_train)]
@@ -76,10 +85,10 @@ def main():
 
     print(target_corr)
 
-    # 12) Resumen + EDA opcional
+    # 13) Resumen + EDA opcional
     #review_dataset(dataset, f'dataset_{CATEGORY}')
 
-    # 13) Persistencia
+    # 14) Persistencia
     uts.save_pickle(dataset, f'./data/output/pickle/dataset_{CATEGORY}.pickle')
 
 

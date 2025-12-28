@@ -20,7 +20,7 @@ def crear_grid_search_cv(param_test: dict, hyperparams: dict, gs_cv: dict):
     :param gs_cv: posee los parámetros que se utilizarán en el grid search cross validation.
     :return:
     """
-    ce_te = ce.TargetEncoder(cols=['id_barrio', 'id_comuna'])
+    ce_te = ce.TargetEncoder(cols=['id_barrio'])
     reg = xgb.XGBRegressor(
         learning_rate=hyperparams['learning_rate'],
         n_estimators=hyperparams['n_estimators'],
@@ -58,7 +58,7 @@ def crear_grid_search_cv_generic(estimator, param_test: dict, gs_cv: dict, model
     :param gs_cv: diccionario con 'scoring', 'n_jobs' y 'cv'
     :param model_name: nombre del step en el Pipeline (ej: 'lgbm', 'rf', 'ridge')
     """
-    ce_te = ce.TargetEncoder(cols=['id_barrio', 'id_comuna'])
+    ce_te = ce.TargetEncoder(cols=['id_barrio'])
 
     # Para Ridge incluimos un StandardScaler; para el resto puedes dejarlo igual.
     steps = [('cat_scaler', ce_te)]
@@ -244,7 +244,7 @@ def hyp_lgbm(train_x: pd.DataFrame, train_y: pd.DataFrame, hyperparams: dict, gs
         colsample_bytree=hyperparams.get('colsample_bytree', 0.8),
         reg_alpha=hyperparams.get('reg_alpha', 0.0),
         reg_lambda=hyperparams.get('reg_lambda', 0.0),
-        n_jobs=hyperparams.get('n_jobs', -1),
+        n_jobs=hyperparams.get('n_jobs', 8),
         random_state=hyperparams.get('random_state', 42),
     )
 
@@ -260,6 +260,103 @@ def hyp_lgbm(train_x: pd.DataFrame, train_y: pd.DataFrame, hyperparams: dict, gs
 
     return hyperparams
 
+
+def hyp_lgbm_staged(train_x: pd.DataFrame, train_y: pd.DataFrame, hyperparams: dict, gs_cv: dict):
+    """
+    Búsqueda escalonada de hiperparámetros LightGBM:
+      Etapa 1: complejidad (num_leaves/max_depth/min_child_samples)
+      Etapa 2: sampling (subsample/colsample_bytree)
+      Etapa 3: regularización + LR/n_estimators (reg_alpha/reg_lambda/learning_rate/n_estimators)
+
+    Devuelve hyperparams actualizado (sin prefijo lgbm__).
+    """
+
+    def _fit_stage(stage_name: str, param_grid: dict, base_params: dict) -> dict:
+        reg = LGBMRegressor(**base_params)
+        print(f"\n[{stage_name}] Inicio: {datetime.datetime.now()}")
+        gsearch = crear_grid_search_cv_generic(reg, param_grid, gs_cv, model_name="lgbm")
+        gsearch.fit(train_x, train_y)
+        reporte_gsearch(gsearch)
+
+        # aplica best_params al dict base_params (quitando prefijo)
+        best = {}
+        for k, v in gsearch.best_params_.items():
+            p = k.split("__", 1)[1]
+            best[p] = v
+        base_params.update(best)
+        return base_params
+
+    # Base params (los que ya usas)
+    base_params = {
+        "objective": hyperparams.get("objective", "regression"),
+        "learning_rate": hyperparams.get("learning_rate", 0.05),
+        "n_estimators": hyperparams.get("n_estimators", 500),
+        "num_leaves": hyperparams.get("num_leaves", 31),
+        "max_depth": hyperparams.get("max_depth", -1),
+        "min_child_samples": hyperparams.get("min_child_samples", 20),
+        "subsample": hyperparams.get("subsample", 0.8),
+        "colsample_bytree": hyperparams.get("colsample_bytree", 0.8),
+        "reg_alpha": hyperparams.get("reg_alpha", 0.0),
+        "reg_lambda": hyperparams.get("reg_lambda", 0.0),
+        "n_jobs": hyperparams.get("n_jobs", 8),
+        "random_state": hyperparams.get("random_state", 42),
+    }
+
+    # =========================
+    # Stage 1: estructura (coarse)
+    # =========================
+    print('Stage 1: estructura (coarse)')
+    grid_1 = {
+        "lgbm__num_leaves": [31, 63, 127, 255],
+        "lgbm__max_depth": [-1, 5, 7, 9, 12],
+        "lgbm__min_child_samples": [10, 20, 40, 80],
+    }
+    base_params = _fit_stage("Stage 1 (estructura)", grid_1, base_params)
+
+    # Refinar alrededor del mejor (más denso pero chico)
+    def around_int(val, deltas, floor=2, ceil=None):
+        cands = sorted({max(floor, val + d) for d in deltas})
+        if ceil is not None:
+            cands = [x for x in cands if x <= ceil]
+        return cands
+
+    best_leaves = int(base_params["num_leaves"])
+    best_depth  = int(base_params["max_depth"])
+    best_mcs    = int(base_params["min_child_samples"])
+
+    grid_1b = {
+        "lgbm__num_leaves": around_int(best_leaves, [-32, -16, 0, 16, 32], floor=8, ceil=511),
+        "lgbm__max_depth": sorted(set([best_depth, -1, max(3, best_depth-2), best_depth+2])),
+        "lgbm__min_child_samples": around_int(best_mcs, [-20, -10, 0, 10, 20], floor=5, ceil=200),
+    }
+    base_params = _fit_stage("Stage 1b (refine estructura)", grid_1b, base_params)
+
+    # =========================
+    # Stage 2: sampling
+    # =========================
+    print('Stage 2: sampling')
+    grid_2 = {
+        "lgbm__subsample": [0.6, 0.7, 0.8, 0.9, 1.0],
+        "lgbm__colsample_bytree": [0.6, 0.7, 0.8, 0.9, 1.0],
+    }
+    base_params = _fit_stage("Stage 2 (sampling)", grid_2, base_params)
+
+    # =========================
+    # Stage 3: regularización + LR / estimators
+    # (LR bajo -> más árboles suele ganar en series)
+    # =========================
+    print('Stage 3: regularización + LR / estimators')
+    grid_3 = {
+        "lgbm__reg_alpha": [0.0, 0.1, 0.5, 1.0, 5.0, 10.0],
+        "lgbm__reg_lambda": [0.0, 0.1, 0.5, 1.0, 5.0, 10.0],
+        "lgbm__learning_rate": [0.005, 0.01, 0.03, 0.05, 0.1],
+        "lgbm__n_estimators": [400, 800, 1200, 2000],
+    }
+    base_params = _fit_stage("Stage 3 (reg + lr/trees)", grid_3, base_params)
+
+    # Copiar de vuelta a hyperparams (mismo formato que tú guardas)
+    hyperparams.update(base_params)
+    return hyperparams
 
 
 def hyp_random_forest(train_x: pd.DataFrame, train_y: pd.DataFrame, hyperparams: dict, gs_cv: dict):
@@ -287,7 +384,7 @@ def hyp_random_forest(train_x: pd.DataFrame, train_y: pd.DataFrame, hyperparams:
         min_samples_split=hyperparams.get('min_samples_split', 2),
         min_samples_leaf=hyperparams.get('min_samples_leaf', 1),
         max_features=hyperparams.get('max_features', 'auto'),
-        n_jobs=hyperparams.get('n_jobs', -1),
+        n_jobs=hyperparams.get('n_jobs', 8),
         random_state=hyperparams.get('random_state', 42),
     )
 
