@@ -58,6 +58,16 @@ def main():
         # ====== Train final ======
         model = train_ligthgbm(train_x, train_y, CATEGORY, CHANNEL, validation_period, RANDOM_STATE)
 
+        # ====== Importancia ======
+        imp_gain_asc = (
+            lgbm_feature_importance_from_pipeline(
+                model, train_x, importance_type="gain"
+            )
+            .sort_values("importance_gain", ascending=True)
+            .reset_index(drop=True)
+        )
+        imp_gain_asc.head(30)  # las peores primero
+
         # ====== Predict ======
         yhat_diff6 = model.predict(test_x)
         yhat_diff6_base = np.zeros(len(test_x), dtype=float)
@@ -161,7 +171,7 @@ def train_ligthgbm(train_x, train_y, category, channel, test_period, random_stat
                 if k in lgbm_params:
                     lgbm_params[k] = v
 
-    te = ce.TargetEncoder(cols=[c for c in ["id_barrio","id_comuna"] if c in train_x.columns])
+    te = ce.TargetEncoder(cols=[c for c in ["id_barrio"] if c in train_x.columns])
 
     lgbm_model = Pipeline([
         ("te", te),
@@ -448,3 +458,29 @@ def plot_shap_dependence(model, X, feature_name, category, channel, validation_p
     plt.close()
 
     return out_path
+
+
+def lgbm_feature_importance_from_pipeline(pipe, X, importance_type="gain"):
+    """
+    pipe: Pipeline con pasos ("te", ..., "lgbm", LGBMRegressor)
+    X: DataFrame original (antes del TE)
+    importance_type: "gain" o "split"
+    """
+    te = pipe.named_steps["te"]
+    lgbm = pipe.named_steps["lgbm"]
+
+    # Transformamos X tal cual la ve el modelo
+    X_tr = te.transform(X)
+
+    # Nombres de features post-transform
+    if hasattr(X_tr, "columns"):
+        feat_names = list(X_tr.columns)
+    else:
+        # si devuelve numpy array, asumimos mismo orden que X (TargetEncoder suele devolver DF)
+        feat_names = list(getattr(X, "columns", [f"f{i}" for i in range(X_tr.shape[1])]))
+
+    imp = lgbm.booster_.feature_importance(importance_type=importance_type)
+
+    out = pd.DataFrame({"feature": feat_names, f"importance_{importance_type}": imp})
+    out = out.sort_values(f"importance_{importance_type}", ascending=False).reset_index(drop=True)
+    return out

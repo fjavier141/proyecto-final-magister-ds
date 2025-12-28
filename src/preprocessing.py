@@ -467,7 +467,8 @@ def get_train_data(df: pd.DataFrame, train_date_set: list, category):
         'n_habitantes', 'prop_vol_masivo', 'canal', 'descr_flag_patente', 'volumen_sem_ar1', 'volumen_sem_ar2',
         'volumen_sem_fut', 'volumen_dif1', 'volumen_dif1_dif12', 'volumen_sem_dif6', 'volumen_sem_dif6_fut',
         'imacec', 'uf', 'tpm', 'ipc', 'tasa_desempleo', 'vol_sem_rel_dif6_lag6', 'vol_sem_rel_dif6_lag12', 'compra',
-        'vol_sem_dif6', 'vol_sem_dif6_lag6', 'dolar'
+        'vol_sem_dif6', 'vol_sem_dif6_lag6', 'dolar', 'id_comuna', 'recency', 'n_ptos_interes', 'tpm_sem', 'tpm_chg_6m',
+        'tpm_pct_6m', 'tpm_std_6m', 'tpm_trend_6m', 'covid', 'tasa_desempleo_sem'
     ]
 
     for col in dict_mix[category]:
@@ -501,7 +502,8 @@ def get_val_data(df: pd.DataFrame, test_date_set, category):
         'n_habitantes', 'prop_vol_masivo', 'canal', 'descr_flag_patente', 'volumen_sem_ar1', 'volumen_sem_ar2',
         'volumen_sem_fut', 'volumen_dif1', 'volumen_dif1_dif12', 'volumen_sem_dif6', 'volumen_sem_dif6_fut',
         'imacec', 'uf', 'tpm', 'ipc', 'tasa_desempleo', 'vol_sem_rel_dif6_lag6', 'vol_sem_rel_dif6_lag12', 'compra',
-        'vol_sem_dif6', 'vol_sem_dif6_lag6', 'dolar'
+        'vol_sem_dif6', 'vol_sem_dif6_lag6', 'dolar', 'id_comuna', 'recency', 'n_ptos_interes', 'tpm_sem', 'tpm_chg_6m',
+        'tpm_pct_6m', 'tpm_std_6m', 'tpm_trend_6m', 'covid', 'tasa_desempleo_sem'
     ]
     for col in dict_mix[category]:
         cols_to_drop.append(f'porc_{col}')
