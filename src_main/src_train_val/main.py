@@ -5,6 +5,8 @@ import pandas as pd
 from lightgbm import LGBMRegressor
 import category_encoders as ce
 from sklearn.pipeline import Pipeline
+import matplotlib.pyplot as plt
+import shap
 
 import src.preprocessing as pre
 from src_main.src_search_hyperparams.main import lightgbm_cross_validation
@@ -16,7 +18,7 @@ from parameters.config import *
 SEGMENTS_TO_USE = SEGMENTS_CHANNEL[CHANNEL]
 
 def main():
-    validation_periods = uts.get_validation_periods(TEST_PERIOD, 1)
+    validation_periods = uts.get_validation_periods(TEST_PERIOD, 2)
     dataset = uts.load_pickle(f'./data/output/pickle/dataset_{CATEGORY}.pickle')
 
     df = dataset.copy()
@@ -122,6 +124,14 @@ def main():
         print(f'Accuracy binario baseline {validation_period}: {bin_metrics_grow_base["accuracy"]:.3f}')
         print(f'F1 weighted binario baseline {validation_period}: {bin_metrics_grow_base["f1_weighted"]:.3f}')
         uts.save_json(bin_metrics_grow_base, os.path.join(path_validation, "class_metrics_grow_binary_base.json"))
+
+        # ====== Importancia de las variables conjunto de Train ======
+        explain_model(model, train_x, CATEGORY, CHANNEL, validation_period, path_validation, mode='train')
+        plot_shap_dependence(model, train_x, 'ar0', CATEGORY, CHANNEL, validation_period, path_validation,'train')
+
+        # ====== Importancia de las variables conjunto de Validación ======
+        explain_model(model, test_x, CATEGORY, CHANNEL, validation_period, path_validation, mode='test')
+        plot_shap_dependence(model, test_x, 'ar0', CATEGORY, CHANNEL, validation_period, path_validation,'test')
 
         save_validation_dataset(df, df_out_grow, df_out_grow_base, path_validation,
                                 validation_period)
@@ -334,3 +344,109 @@ def save_validation_dataset(dataset, df_validation_ligthgbm, df_validation_basel
 
     uts.save_pickle(df_scoring_lgbm, os.path.join(path_validation, "scoring_lgbm.pkl"))
     uts.save_pickle(df_scoring_base, os.path.join(path_validation, "scoring_base.pkl"))
+
+
+### IAX ###
+
+def explain_model(model, X, category, channel, validation_period, path_validation, mode="train"):
+    """
+    Explica un Pipeline (TargetEncoder + LGBM) usando SHAP TreeExplainer.
+    - Extrae el estimador de árbol del pipeline
+    - Transforma X con el encoder antes de SHAP
+    """
+
+    # 1) Extraer steps
+    te = model.named_steps.get("te", None)
+    lgbm = model.named_steps.get("lgbm", None)
+
+    if lgbm is None:
+        raise ValueError("No encontré el step 'lgbm' dentro del Pipeline. Revisa el nombre del step.")
+
+    # 2) Transformar X con el encoder (si existe)
+    if te is not None:
+        X_enc = te.transform(X)   # TargetEncoder entrega DataFrame/ndarray
+    else:
+        X_enc = X
+
+    # 3) Asegurar DataFrame con nombres (shap.summary_plot lo agradece)
+    if not isinstance(X_enc, pd.DataFrame):
+        X_enc = pd.DataFrame(X_enc, columns=getattr(X, "columns", None))
+
+    # 4) SHAP sobre el estimador tree (NO el pipeline)
+    explainer = shap.TreeExplainer(lgbm)
+    shap_values = explainer.shap_values(X_enc)
+
+    # 5) Plots
+    plt.figure(figsize=(14, 8))
+    shap.summary_plot(shap_values, X_enc, show=False)
+    plt.title(f"Impacto de Variables (SHAP) - {category} {channel} {validation_period} ({mode})")
+    plt.savefig(os.path.join(path_validation, f"shap_summary_{mode}.png"), bbox_inches="tight")
+    plt.close()
+
+    plt.figure(figsize=(14, 8))
+    shap.summary_plot(shap_values, X_enc, plot_type="bar", show=False)
+    plt.title(f"Importancia de Variables (SHAP) - {category} {channel} {validation_period} ({mode})")
+    plt.savefig(os.path.join(path_validation, f"shap_importance_{mode}.png"), bbox_inches="tight")
+    plt.close()
+
+    return shap_values
+
+
+
+def plot_shap_dependence(model, X, feature_name, category, channel, validation_period, path_validation, mode="train",
+    interaction_feature="auto"):
+    """
+    Dependence plot SHAP para un Pipeline (TargetEncoder + LGBM).
+    Explica SOLO el estimador LGBM y transforma X con el TargetEncoder.
+    """
+
+    # 1) Extraer steps del pipeline
+    te = model.named_steps.get("te", None)
+    lgbm = model.named_steps.get("lgbm", None)
+
+    if lgbm is None:
+        raise ValueError("No se encontró el step 'lgbm' dentro del Pipeline.")
+
+    # 2) Transformar X con TargetEncoder (si existe)
+    if te is not None:
+        X_enc = te.transform(X)
+    else:
+        X_enc = X.copy()
+
+    # 3) Asegurar DataFrame con nombres de columnas
+    if not isinstance(X_enc, pd.DataFrame):
+        X_enc = pd.DataFrame(X_enc, columns=X.columns)
+
+    # 4) Validar que la feature exista post-encoding
+    if feature_name not in X_enc.columns:
+        raise ValueError(
+            f"feature '{feature_name}' no existe en X post-encoding. "
+            f"Columnas disponibles: {list(X_enc.columns)[:15]}..."
+        )
+
+    # 5) SHAP sobre el estimador de árboles
+    explainer = shap.TreeExplainer(lgbm)
+    shap_values = explainer.shap_values(X_enc)
+
+    # 6) Plot
+    plt.figure(figsize=(14, 8))
+    shap.dependence_plot(
+        feature_name,
+        shap_values,
+        X_enc,
+        interaction_index=interaction_feature,
+        show=False
+    )
+
+    plt.title(
+        f"Dependencia SHAP: {feature_name} "
+        f"({category} {channel} {validation_period}) [{mode}]"
+    )
+
+    out_path = os.path.join(
+        path_validation, f"shap_dependence_{feature_name}_{mode}.png"
+    )
+    plt.savefig(out_path, bbox_inches="tight")
+    plt.close()
+
+    return out_path
