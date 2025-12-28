@@ -56,7 +56,7 @@ def main():
         lightgbm_cross_validation(train_x, train_y, train_like, per_train, validation_period, CATEGORY, CHANNEL)
 
         # ====== Train final ======
-        model = train_ligthgbm(train_x, train_y, CATEGORY, validation_period, RANDOM_STATE)
+        model = train_ligthgbm(train_x, train_y, CATEGORY, CHANNEL, validation_period, RANDOM_STATE)
 
         # ====== Predict ======
         yhat_diff6 = model.predict(test_x)
@@ -137,7 +137,7 @@ def main():
                                 validation_period)
 
 
-def train_ligthgbm(train_x, train_y, category, test_period, random_state):
+def train_ligthgbm(train_x, train_y, category, channel, test_period, random_state):
     lgbm_params = {
         "n_estimators": 1200,
         "learning_rate": 0.03,
@@ -155,7 +155,7 @@ def train_ligthgbm(train_x, train_y, category, test_period, random_state):
     }
 
     if USE_SAVED_HYPERPARAMS:
-        saved = load_hyperparams_from_disk("LightGBM", category, test_period)
+        saved = load_hyperparams_from_disk("LightGBM", category, channel, test_period)
         if saved:
             for k, v in saved.items():
                 if k in lgbm_params:
@@ -214,6 +214,7 @@ def make_finite_y(y):
 
 def load_hyperparams_from_disk(model_name: str,
                                category: str,
+                               channel: str,
                                test_period: int,
                                base_dir: str = HYPERPARAMS_DIR) -> dict:
     """
@@ -227,13 +228,13 @@ def load_hyperparams_from_disk(model_name: str,
     """
 
     if model_name == "XGBoost":
-        filename = f"hyperparams_xgb_{category}_{test_period}.json"
+        filename = f"hyperparams_xgb_{category}_{channel}_{test_period}.json"
     elif model_name == "LightGBM":
-        filename = f"hyperparams_lgbm_{category}_{test_period}.json"
+        filename = f"hyperparams_lgbm_{category}_{channel}_{test_period}.json"
     elif model_name == "RandomForest":
-        filename = f"hyperparams_rf_{category}_{test_period}.json"
+        filename = f"hyperparams_rf_{category}_{channel}_{test_period}.json"
     elif model_name == "Ridge":
-        filename = f"hyperparams_ridge_{category}_{test_period}.json"
+        filename = f"hyperparams_ridge_{category}_{channel}_{test_period}.json"
     else:
         return {}
 
