@@ -10,5 +10,5 @@ category-encoders==2.9.0
 ydata_profiling==4.17.0
 python-dotenv==1.2.1
 sqlalchemy==2.0.44
-psycopg2==2.9.11
+psycopg2-binary
 shap==0.50.0

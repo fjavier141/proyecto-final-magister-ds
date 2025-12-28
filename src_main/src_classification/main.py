@@ -69,8 +69,26 @@ def main():
         # Gráfico combinado (volumen total + #clientes)
         plot_cluster_volume_and_clients(dataset_predict)
 
+        # Métricas descriptivas
+        summary = (
+            dataset_predict
+            .groupby("cluster_id")
+            .agg(
+                mediana_crecimiento=("volumen_crecimiento_sem_fut", "median"),
+                mediana_volumen_anual=("size_base", "median"),
+                n_clientes=("cluster_id", "size")
+            )
+            .reset_index()
+        )
+
+        print(summary)
+
+        alpha = 0.1  # 10% de eficiencia por visita (ajústalo)
+        rep = cluster_impact_report(dataset_predict, alpha_eff=alpha)
+
         # persistencia de resultados:
         uts.save_pickle(dataset_predict, os.path.join(path_validation, 'clusters_kmeans.pkl'))
+        rep.to_excel(os.path.join(path_validation, 'analisis_score_rescate.xlsx'))
 
 
 def filter_join_data(dataset_predict, dataset_processing) -> pd.DataFrame:
@@ -444,6 +462,82 @@ def plot_elbow_from_metrics(
 
     plt.tight_layout()
     plt.show()
+
+
+def cluster_impact_report(
+    df: pd.DataFrame,
+    cluster_col: str = "cluster_id",
+    impact_col: str = "volumen_crecimiento_sem_fut",
+    volume_col: str = "size_base",
+    visits_col: str | None = None,
+    alpha_eff: float = 1.0,
+) -> pd.DataFrame:
+    """
+    Reporte por cluster con:
+    - Impacto neto: sum(impact_col)
+    - Riesgo (solo caídas): sum(|impact|) para impact<0
+    - Oportunidad (solo alzas): sum(impact) para impact>0
+    - #clientes
+    - Volumen anual total y mediano
+    - Métricas trade-off con visitas:
+        - rescate_potencial = alpha_eff * riesgo
+        - score_rescate_por_visita = rescate_potencial / visitas
+
+    alpha_eff:
+      - 1.0 = asumes que "podrías" capturar/contener el 100% del riesgo si visitas
+      - 0.3 = eficiencia 30% (más realista)
+    """
+
+    work = df.copy()
+
+    # Visitas: si no existe columna, aproximamos visitas = 1 por cliente (una visita por cliente)
+    if visits_col is None or visits_col not in work.columns:
+        work["_visitas"] = 1
+        visits_col_use = "_visitas"
+    else:
+        visits_col_use = visits_col
+
+    # Componentes de impacto
+    work["_neg"] = np.where(work[impact_col] < 0, -work[impact_col], 0.0)  # riesgo en valor absoluto
+    work["_pos"] = np.where(work[impact_col] > 0,  work[impact_col], 0.0)  # oportunidad
+
+    report = (
+        work.groupby(cluster_col, as_index=False)
+            .agg(
+                n_clientes=("id_cliente", "nunique") if "id_cliente" in work.columns else (cluster_col, "size"),
+                visitas=(visits_col_use, "sum"),
+
+                impacto_neto=(impact_col, "sum"),
+                riesgo_total=("_neg", "sum"),
+                oportunidad_total=("_pos", "sum"),
+
+                volumen_anual_total=(volume_col, "sum"),
+                mediana_volumen_anual=(volume_col, "median"),
+                mediana_crecimiento=(impact_col, "median"),
+            )
+            .sort_values(cluster_col)
+            .reset_index(drop=True)
+    )
+
+    # Métricas trade-off
+    report["rescate_potencial"] = alpha_eff * report["riesgo_total"]
+    report["score_rescate_por_visita"] = report["rescate_potencial"] / report["visitas"].replace(0, np.nan)
+
+    # % contribuciones (útil para storytelling)
+    total_riesgo = report["riesgo_total"].sum()
+    total_vol = report["volumen_anual_total"].sum()
+
+    report["pct_riesgo_total"] = np.where(total_riesgo > 0, report["riesgo_total"] / total_riesgo, 0.0)
+    report["pct_volumen_total"] = np.where(total_vol > 0, report["volumen_anual_total"] / total_vol, 0.0)
+
+    # Orden recomendado para decidir dónde actuar (por rendimiento por visita)
+    report = report.sort_values("score_rescate_por_visita", ascending=False).reset_index(drop=True)
+
+    # Limpieza
+    if "_visitas" in work.columns:
+        pass  # no afecta afuera
+
+    return report
 
 
 if __name__ == "__main__":
