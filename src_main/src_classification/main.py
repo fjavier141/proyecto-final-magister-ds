@@ -29,8 +29,8 @@ def thousands_with_dot(x, pos=None):
         return str(x)
 
 PRETTY_LABELS = {
-    "size_base": "Volumen Anual",
-    "volumen_crecimiento_sem_fut": "Crecimiento Estimado"
+    "size_base": "Volumen Anual [HL]",
+    "volumen_crecimiento_sem_fut": "Crecimiento Estimado [HL]"
 }
 
 def main():
@@ -417,7 +417,7 @@ def plot_cluster_volume_and_clients(
     )
     ax1.set_title(title, pad=12)
     ax1.set_xlabel("Cluster")
-    ax1.set_ylabel("Volumen Anual Total")
+    ax1.set_ylabel("Volumen Anual Total [HL]")
     ax1.yaxis.set_major_formatter(FuncFormatter(thousands_with_dot))
 
     ax1.set_xticks(x_pos)
