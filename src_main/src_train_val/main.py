@@ -92,49 +92,6 @@ def main():
         df_out_grow = calculate_grow(df_out)
         df_out_grow_base = calculate_grow(df_out_base)
 
-        # ====== Cuartiles de crecimiento LigthGBM ======
-        class_metrics_grow = growth_quartile_metrics(df_out_grow, 'crecimiento_fut_real', 'crecimiento_fut_est')
-        plot_confusion_matrix_percent(class_metrics_grow["confusion_matrix"], labels=class_metrics_grow["labels"],
-                                      title=f'Cuartiles Crecimiento ligthgbm {validation_period}', path_save=os.path.join(path_validation, "confusion_matrix_lithgbm.png"))
-        print(f'Accuracy cuartiles crecimiento modelo ligthgbm {validation_period}: {class_metrics_grow['accuracy']:.3f}')
-        print(f'F1 ponderado crecimiento modelo ligthgbm {validation_period}: {class_metrics_grow['f1_weighted']:.3f}')
-        uts.save_json(class_metrics_grow, os.path.join(path_validation, "class_metrics_grow.json"))
-
-        # ====== Cuartiles de crecimiento Baseline ======
-        class_metrics_grow_base = growth_quartile_metrics(df_out_grow_base, 'crecimiento_fut_real', 'crecimiento_fut_est')
-        plot_confusion_matrix_percent(class_metrics_grow_base["confusion_matrix"], labels=class_metrics_grow_base["labels"],
-                                      title=f'Cuartiles Crecimiento base {validation_period}', path_save=os.path.join(path_validation, "confusion_matrix_base.png"))
-        print(f'Accuracy cuartiles crecimiento modelo baseline {validation_period}: {class_metrics_grow_base['accuracy']:.3f}')
-        print(f'F1 ponderado crecimiento modelo baseline {validation_period}: {class_metrics_grow_base['f1_weighted']:.3f}')
-        uts.save_json(class_metrics_grow_base, os.path.join(path_validation, "class_metrics_grow_base.json"))
-
-        # ====== Binario (p50) crecimiento LightGBM ======
-        bin_metrics_grow = growth_binary_metrics(df_out_grow, 'crecimiento_fut_real', 'crecimiento_fut_est', q_cut=0.50)
-        plot_confusion_matrix_percent(
-            np.array(bin_metrics_grow["confusion_matrix_percent"]),
-            labels=bin_metrics_grow["labels"],
-            title=f'Bajo/Alto (p50) Crecimiento ligthgbm {validation_period}',
-            path_save=os.path.join(path_validation, "confusion_matrix_binary_lithgbm.png")
-        )
-        print(f'Cut p50 (real) ligthgbm {validation_period}: {bin_metrics_grow["cut_value"]:.6f}')
-        print(f'Accuracy binario ligthgbm {validation_period}: {bin_metrics_grow["accuracy"]:.3f}')
-        print(f'F1 weighted binario ligthgbm {validation_period}: {bin_metrics_grow["f1_weighted"]:.3f}')
-        uts.save_json(bin_metrics_grow, os.path.join(path_validation, "class_metrics_grow_binary.json"))
-
-        # ====== Binario (p50) crecimiento Baseline ======
-        bin_metrics_grow_base = growth_binary_metrics(df_out_grow_base, 'crecimiento_fut_real', 'crecimiento_fut_est',
-                                                      q_cut=0.50)
-        plot_confusion_matrix_percent(
-            np.array(bin_metrics_grow_base["confusion_matrix_percent"]),
-            labels=bin_metrics_grow_base["labels"],
-            title=f'Bajo/Alto (p50) Crecimiento base {validation_period}',
-            path_save=os.path.join(path_validation, "confusion_matrix_binary_base.png")
-        )
-        print(f'Cut p50 (real) baseline {validation_period}: {bin_metrics_grow_base["cut_value"]:.6f}')
-        print(f'Accuracy binario baseline {validation_period}: {bin_metrics_grow_base["accuracy"]:.3f}')
-        print(f'F1 weighted binario baseline {validation_period}: {bin_metrics_grow_base["f1_weighted"]:.3f}')
-        uts.save_json(bin_metrics_grow_base, os.path.join(path_validation, "class_metrics_grow_binary_base.json"))
-
         # ====== Importancia de las variables conjunto de Train ======
         explain_model(model, train_x, CATEGORY, CHANNEL, validation_period, path_validation, mode='train')
         plot_shap_dependence(model, train_x, 'ar0', CATEGORY, CHANNEL, validation_period, path_validation,'train')
