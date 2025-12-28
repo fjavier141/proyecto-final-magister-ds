@@ -48,11 +48,6 @@ def main():
 
 
 
-
-
-
-
-
 def filter_join_data(dataset_predict, dataset_processing) -> pd.DataFrame:
     '''
     Filtra y une los datasets necesarios para el proceso de clustering.
@@ -97,6 +92,12 @@ def get_X_for_clustering(df: pd.DataFrame) -> pd.DataFrame:
     #cols_to_drop = ['id_cliente','id_periodo','id_barrio', 'id_comuna','canal','segmento','indice_gse', 'volumen_sem_fut_est']
     #X = df.drop(cols_to_drop, axis=1)
     X = df[['crecimiento_fut_est', 'size_base']]
+
+    X['size_base'] = np.log1p(X['size_base'])
+
+    X['crecimiento_fut_est'] = np.log1p(
+        X['crecimiento_fut_est'].clip(lower=0)
+    )
 
     ## Regularización y escalamiento de variables:
 

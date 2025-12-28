@@ -252,6 +252,7 @@ def load_hyperparams_from_disk(model_name: str,
         print(f"[WARN] Error leyendo hiperparámetros de {path}: {e}")
         return {}
 
+
 def calculate_grow(df):
     df1 = df.copy()
     denominator = df1["volumen_sem_ar1"] + df1["volumen_sem"]
@@ -341,12 +342,9 @@ def save_validation_dataset(dataset, df_validation_ligthgbm, df_validation_basel
         duplicates="drop"
     ).astype(str)
 
-
     uts.save_pickle(df_scoring_lgbm, os.path.join(path_validation, "scoring_lgbm.pkl"))
     uts.save_pickle(df_scoring_base, os.path.join(path_validation, "scoring_base.pkl"))
 
-
-### IAX ###
 
 def explain_model(model, X, category, channel, validation_period, path_validation, mode="train"):
     """
@@ -390,7 +388,6 @@ def explain_model(model, X, category, channel, validation_period, path_validatio
     plt.close()
 
     return shap_values
-
 
 
 def plot_shap_dependence(model, X, feature_name, category, channel, validation_period, path_validation, mode="train",
