@@ -59,7 +59,7 @@ def xgboost_cross_validation(train_x, train_y, preprocessed_data, train_date_set
 
 
 
-def lightgbm_cross_validation(train_x, train_y, preprocessed_data, train_date_set, test_date, category):
+def lightgbm_cross_validation(train_x, train_y, preprocessed_data, train_date_set, test_date, category, channel):
     """
     Búsqueda de hiperparámetros para LightGBM usando validación cruzada temporal.
     Guarda un JSON con los hiperparámetros óptimos.
@@ -81,19 +81,20 @@ def lightgbm_cross_validation(train_x, train_y, preprocessed_data, train_date_se
     }
 
     gs_cv = {
-        'scoring': 'neg_mean_squared_error',
+        'scoring': 'neg_root_mean_squared_error',
         'n_jobs': 8,
         'cv': train_val.get_val_set_index(train_date_set, preprocessed_data, category)
     }
 
     print("Inicio de búsqueda de hiperparámetros LightGBM")
-    hyperparams = hyp.hyp_lgbm(train_x, train_y, hyperparams, gs_cv)
+    #hyperparams = hyp.hyp_lgbm(train_x, train_y, hyperparams, gs_cv)
+    hyperparams = hyp.hyp_lgbm_staged(train_x, train_y, hyperparams, gs_cv)
 
     print(f'Hiperparámetros LightGBM encontrados: {json.dumps(hyperparams)}.')
 
     path_hyperparams = os.path.join("./data/output/hyperparams")
     create_directory_if_not_exists([path_hyperparams])
-    path_json = os.path.join(path_hyperparams, f'hyperparams_lgbm_{category}_{test_date}.json')
+    path_json = os.path.join(path_hyperparams, f'hyperparams_lgbm_{category}_{channel}_{test_date}.json')
 
     with open(path_json, 'w') as json_file:
         json.dump(hyperparams, json_file)

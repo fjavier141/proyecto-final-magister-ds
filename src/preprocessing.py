@@ -252,14 +252,140 @@ def calculate_rolling_lags(agg_sales, category):
     return sales
 
 
+def calculate_rolling_lags_2(agg_sales: pd.DataFrame, category: str) -> pd.DataFrame:
+    """
+    Features temporales (mensuales) por cliente.
+
+    Genera (principales):
+    - volumen_sem: suma móvil 6 meses (min_periods=6)
+    - prop_vol_{mix}: promedio móvil 6 meses de proporciones de mix (min_periods=6)
+
+    - Lags de nivel:
+        vol_sem_lag6, vol_sem_lag12
+    - Cambios:
+        vol_sem_dif6 (abs), vol_sem_rel_dif6 (relativo)
+    - Lags de cambios:
+        vol_sem_dif6_lag6, vol_sem_rel_dif6_lag6, vol_sem_rel_dif6_lag12
+    - Tendencia y volatilidad:
+        trend_6m_vol (pendiente últimos 6 meses de volumen mensual)
+        vol_std_6m (desv std últimos 6 meses de volumen mensual)
+
+    - Target:
+        volumen_sem_dif6_fut = shift(-6) de vol_sem_dif6
+
+    - RFM básico:
+        compra, frequency_12m, recency (cap 12)
+
+    Importante:
+    - NO rellena NaN con 0 en lags/targets: NaN = “no hay historia suficiente”.
+      Se filtra después en train/test.
+    """
+    sales = agg_sales.copy()
+    sales = sales.sort_values(["id_cliente", "id_periodo"]).reset_index(drop=True)
+
+    g = sales.groupby("id_cliente", sort=False)
+
+    # =========================
+    # 1) Rolling 6M del volumen (nivel semestral)
+    # =========================
+    sales["volumen_sem"] = g["volumen"].transform(lambda x: x.rolling(6, min_periods=6).sum())
+
+    # =========================
+    # 2) Rolling 6M de proporciones de mix
+    # =========================
+    for mix in dict_mix[category]:
+        col = f"porc_{mix}"
+        if col in sales.columns:
+            sales[f"prop_vol_{mix}"] = g[col].transform(lambda x: x.rolling(6, min_periods=6).mean())
+
+    # =========================
+    # 3) Lags del nivel semestral
+    # =========================
+    sales["vol_sem_lag6"]  = g["volumen_sem"].shift(6)
+    sales["vol_sem_lag12"] = g["volumen_sem"].shift(12)
+
+    # Si quieres conservar nombres antiguos para compatibilidad:
+    sales["volumen_sem_ar1"] = sales["vol_sem_lag6"]
+    sales["volumen_sem_ar2"] = sales["vol_sem_lag12"]
+    sales["volumen_sem_fut"] = g["volumen_sem"].shift(-6)
+
+    # =========================
+    # 4) Diferencias y cambios relativos
+    # =========================
+    sales["volumen_dif1"] = g["volumen"].diff(1)  # mes a mes
+
+    # Cambio semestral del nivel semestral (abs)
+    sales["vol_sem_dif6"] = g["volumen_sem"].diff(6)
+    sales["volumen_sem_dif6"] = sales["vol_sem_dif6"]  # compat
+
+    # Cambio relativo semestral (MUY útil para crecimiento)
+    eps = 1e-3
+    sales["vol_sem_rel_dif6"] = sales["vol_sem_dif6"] / (sales["vol_sem_lag6"] + eps)
+
+    # Lags de cambios (contexto: cómo venía cambiando)
+    sales["vol_sem_dif6_lag6"] = g["vol_sem_dif6"].shift(6)
+    sales["vol_sem_rel_dif6_lag6"]  = g["vol_sem_rel_dif6"].shift(6)
+    sales["vol_sem_rel_dif6_lag12"] = g["vol_sem_rel_dif6"].shift(12)
+
+    # Si quieres mantener tus columnas ar0..ar3 (pero coherentes y simples)
+    # ar0 = cambio actual, ar1 = cambio 6m atrás, etc.
+    for i in range(0, 4):
+        sales[f"ar{i}"] = g["vol_sem_dif6"].shift(i * 6)
+
+    # (Opcional) Mantener ar_mes* si lo usas; si no lo usas, bórralo
+    sales["volumen_dif1_dif12"] = g["volumen_dif1"].diff(12)
+    for i in range(0, 4):
+        sales[f"ar_mes{i}"] = g["volumen_dif1_dif12"].shift(i)
+
+    # =========================
+    # 5) Tendencia 6M y volatilidad (señales de estabilidad)
+    # =========================
+    def _slope_6m(x: pd.Series) -> pd.Series:
+        # slope sobre ventanas de 6 puntos (volumen mensual)
+        # devuelve NaN si no hay 6 obs
+        arr = x.to_numpy(dtype=float)
+        out = np.full(len(arr), np.nan, dtype=float)
+        t = np.arange(6, dtype=float)
+        t_mean = t.mean()
+        denom = ((t - t_mean) ** 2).sum()
+
+        for i in range(5, len(arr)):
+            y = arr[i-5:i+1]
+            if np.any(~np.isfinite(y)):
+                continue
+            y_mean = y.mean()
+            num = ((t - t_mean) * (y - y_mean)).sum()
+            out[i] = num / denom
+        return pd.Series(out, index=x.index)
+
+    sales["trend_6m_vol"] = g["volumen"].transform(_slope_6m)
+    sales["vol_std_6m"] = g["volumen"].transform(lambda x: x.rolling(6, min_periods=6).std())
+
+    # =========================
+    # 6) Target (futuro 6 meses del cambio semestral)
+    # =========================
+    sales["volumen_sem_dif6_fut"] = g["vol_sem_dif6"].shift(-6)
+
+    # =========================
+    # 7) RFM básico
+    # =========================
+    sales["compra"] = (sales["volumen"] > 0).astype(int)
+
+    sales["frecuency"] = g["compra"].transform(lambda x: x.rolling(12, min_periods=1).sum())
+    sales["recency"] = g["compra"].transform(recency_12_cap)
+
+    return sales
+
+
 def recency_12_cap(x: pd.Series) -> pd.Series:
     """
-    Calcula recency "capped" a 12:
-    - Si no hay compra previa, 12
-    - Si hay compra en el mes i, 0
-    - En meses sin compra, distancia en meses a la última compra, con tope 12
+    Recency capped a 12 SOLO para clientes con al menos una compra previa.
+
+    - recency = 0  → compra en el mes actual
+    - recency = k  → k meses desde la última compra
+    - recency = NaN → nunca ha comprado (se filtra antes o después)
     """
-    rec = np.zeros(len(x), dtype=int)
+    rec = np.full(len(x), np.nan, dtype=float)
     last_purchase = None
 
     for i, v in enumerate(x):
@@ -267,9 +393,7 @@ def recency_12_cap(x: pd.Series) -> pd.Series:
             rec[i] = 0
             last_purchase = i
         else:
-            if last_purchase is None:
-                rec[i] = 12
-            else:
+            if last_purchase is not None:
                 rec[i] = min(i - last_purchase, 12)
 
     return pd.Series(rec, index=x.index)
@@ -345,6 +469,13 @@ def get_train_data(df: pd.DataFrame, train_date_set: list, category):
         'volumen_sem_dif6_fut'
     ]
 
+    cols_to_drop = [
+        'id_categoria', 'id_periodo', 'id_cliente', 'id_canal', 'volumen', 'volumen_sem', 'superficie_km2',
+        'n_habitantes', 'prop_vol_masivo', 'canal', 'descr_flag_patente', 'volumen_sem_ar1', 'volumen_sem_ar2',
+        'volumen_sem_fut', 'volumen_dif1', 'volumen_dif1_dif12', 'volumen_sem_dif6', 'volumen_sem_dif6_fut',
+        'imacec', 'uf', 'tpm', 'ipc', 'tasa_desempleo', 'vol_sem_rel_dif6_lag6', 'vol_sem_rel_dif6_lag12', 'compra'
+    ]
+
     for col in dict_mix[category]:
         cols_to_drop.append(f'porc_{col}')
     df1 = df.copy()
@@ -376,6 +507,13 @@ def get_val_data(df: pd.DataFrame, test_date_set, category):
         'volumen_sem_ar1', 'volumen_sem_ar2', 'volumen_sem_fut',
         'volumen_dif1', 'volumen_dif1_dif12', 'volumen_sem_dif6',
         'volumen_sem_dif6_fut'
+    ]
+
+    cols_to_drop = [
+        'id_categoria', 'id_periodo', 'id_cliente', 'id_canal', 'volumen', 'volumen_sem', 'superficie_km2',
+        'n_habitantes', 'prop_vol_masivo', 'canal', 'descr_flag_patente', 'volumen_sem_ar1', 'volumen_sem_ar2',
+        'volumen_sem_fut', 'volumen_dif1', 'volumen_dif1_dif12', 'volumen_sem_dif6', 'volumen_sem_dif6_fut',
+        'imacec', 'uf', 'tpm', 'ipc', 'tasa_desempleo', 'vol_sem_rel_dif6_lag6', 'vol_sem_rel_dif6_lag12', 'compra'
     ]
     for col in dict_mix[category]:
         cols_to_drop.append(f'porc_{col}')
@@ -417,3 +555,48 @@ def get_pred_set(df: pd.DataFrame, test_date_set):
     df1.reset_index(drop=True, inplace=True)
     df1['volumen_sem_dif6_fut'] = np.nan
     return df1
+
+def clean_for_ar_simple(
+    df: pd.DataFrame,
+    *,
+    max_recency: int = 12,
+    min_ar1: float = 1.0,
+    clip_rel: tuple = (0.01, 0.99),
+    clip_y: tuple = (0.01, 0.99),
+    rel_col: str = "vol_sem_rel_dif6",
+    y_col: str = "volumen_sem_dif6_fut",
+    ar1_col: str = "vol_sem_lag6",   # o "volumen_sem_ar1" si prefieres
+) -> pd.DataFrame:
+    """
+    Limpieza mínima post-features:
+    1) recency: deja clientes activos (si existe la col)
+    2) evita divisiones/ratios locos: ar1 mínimo
+    3) clip robusto de outliers en rel y target
+    4) deja todo finito
+    """
+    d = df.copy()
+
+    # 1) Clientes vivos
+    if "recency" in d.columns and max_recency is not None:
+        d = d[d["recency"].notna() & (d["recency"] <= max_recency)]
+
+    # 2) Evitar ratios explosivos por denominador chico
+    if ar1_col in d.columns and min_ar1 is not None:
+        d = d[d[ar1_col].notna() & (d[ar1_col] >= min_ar1)]
+
+    # 3) Clipping robusto
+    def _clip(col, q):
+        if col in d.columns and d[col].notna().sum() > 100:
+            lo, hi = d[col].quantile(q[0]), d[col].quantile(q[1])
+            d[col] = d[col].clip(lo, hi)
+
+    _clip(rel_col, clip_rel)
+    _clip(y_col, clip_y)
+
+    # 4) No finitos fuera
+    num_cols = [c for c in [rel_col, y_col, ar1_col] if c in d.columns]
+    for c in num_cols:
+        d[c] = pd.to_numeric(d[c], errors="coerce").replace([np.inf, -np.inf], np.nan)
+    d = d.dropna(subset=num_cols)
+
+    return d.reset_index(drop=True)
